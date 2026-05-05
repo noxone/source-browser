@@ -1,13 +1,20 @@
 package com.hlag.sourceviewer.adapter.outgoing.persistence.converter;
 
 import com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier;
+import jakarta.persistence.AttributeConverter;
+import jakarta.persistence.Converter;
 
-/**
- * jOOQ-Converter zwischen {@code BIGINT} und {@link ScanJobIdentifier}.
- */
-public class ScanJobIdentifierConverter extends LongIdentifierConverter<ScanJobIdentifier> {
+@Converter(autoApply = true)
+public class ScanJobIdentifierConverter
+        implements AttributeConverter<ScanJobIdentifier, Long> {
 
-    public ScanJobIdentifierConverter() {
-        super(ScanJobIdentifier.class, ScanJobIdentifier::new);
+    @Override
+    public Long convertToDatabaseColumn(ScanJobIdentifier attribute) {
+        return attribute == null ? null : attribute.value();
+    }
+
+    @Override
+    public ScanJobIdentifier convertToEntityAttribute(Long dbData) {
+        return dbData == null ? null : new ScanJobIdentifier(dbData);
     }
 }

@@ -1,13 +1,20 @@
 package com.hlag.sourceviewer.adapter.outgoing.persistence.converter;
 
 import com.hlag.sourceviewer.domain.model.identifier.SymbolIdentifier;
+import jakarta.persistence.AttributeConverter;
+import jakarta.persistence.Converter;
 
-/**
- * jOOQ-Converter zwischen {@code BIGINT} und {@link SymbolIdentifier}.
- */
-public class SymbolIdentifierConverter extends LongIdentifierConverter<SymbolIdentifier> {
+@Converter(autoApply = true)
+public class SymbolIdentifierConverter
+        implements AttributeConverter<SymbolIdentifier, Long> {
 
-    public SymbolIdentifierConverter() {
-        super(SymbolIdentifier.class, SymbolIdentifier::new);
+    @Override
+    public Long convertToDatabaseColumn(SymbolIdentifier attribute) {
+        return attribute == null ? null : attribute.value();
+    }
+
+    @Override
+    public SymbolIdentifier convertToEntityAttribute(Long dbData) {
+        return dbData == null ? null : new SymbolIdentifier(dbData);
     }
 }

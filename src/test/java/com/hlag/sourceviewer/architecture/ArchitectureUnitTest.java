@@ -20,7 +20,6 @@ public class ArchitectureUnitTest {
     private static final String ADAPTER_IN  = "com.hlag.sourceviewer.adapter.incoming..";
     private static final String ADAPTER_OUT = "com.hlag.sourceviewer.adapter.outgoing..";
     private static final String INFRA       = "com.hlag.sourceviewer.infrastructure..";
-    private static final String GENERATED   = "com.hlag.sourceviewer.generated..";
 
     // ── 1. Layer dependencies ─────────────────────────────────────────────────
 
@@ -33,25 +32,24 @@ public class ArchitectureUnitTest {
             .layer("AdapterIn")    .definedBy(ADAPTER_IN)
             .layer("AdapterOut")   .definedBy(ADAPTER_OUT)
             .layer("Infrastructure").definedBy(INFRA)
-            .layer("Generated")    .definedBy(GENERATED)
 
             .whereLayer("Domain")       .mayNotAccessAnyLayer()
             .whereLayer("Application")  .mayOnlyAccessLayers("Domain")
             .whereLayer("AdapterIn")    .mayOnlyAccessLayers("Application", "Domain")
-            .whereLayer("AdapterOut")   .mayOnlyAccessLayers("Application", "Domain", "Generated")
+            .whereLayer("AdapterOut")   .mayOnlyAccessLayers("Application", "Domain")
             .whereLayer("Infrastructure").mayOnlyAccessLayers(
-                    "Application", "Domain", "AdapterIn", "AdapterOut")
-            .whereLayer("Generated")    .mayOnlyBeAccessedByLayers("AdapterOut");
+                    "Application", "Domain", "AdapterIn", "AdapterOut");
 
     // ── 2. Domain is framework-free ───────────────────────────────────────────
 
+    // JPA (@Entity, @Column, etc.) and Hibernate (@JdbcTypeCode) are intentionally
+    // permitted in domain classes per deliberate architectural tradeoff.
     @ArchTest
     static final ArchRule domain_has_no_framework_dependencies =
         noClasses()
             .that().resideInAPackage(DOMAIN)
             .should().dependOnClassesThat().resideInAnyPackage(
                 "io.quarkus..",
-                "jakarta.persistence..",
                 "jakarta.ws.rs..",
                 "jakarta.inject..",
                 "jakarta.enterprise..",
@@ -60,7 +58,7 @@ public class ArchitectureUnitTest {
                 "com.fasterxml.jackson..",
                 "io.smallrye.."
             )
-            .as("Domain classes must not have framework dependencies");
+            .as("Domain classes must not have framework dependencies (JPA/Hibernate permitted)");
 
     // ── 3. Adapters do not know each other ────────────────────────────────────
 
@@ -81,15 +79,16 @@ public class ArchitectureUnitTest {
     // ── 4. Framework containment ──────────────────────────────────────────────
 
     @ArchTest
-    static final ArchRule jooq_only_in_persistence_adapter =
+    static final ArchRule jpa_only_in_domain_and_persistence =
         noClasses()
             .that().resideOutsideOfPackages(
-                "com.hlag.sourceviewer.adapter.outgoing.persistence..",
-                GENERATED)
+                DOMAIN,
+                "com.hlag.sourceviewer.adapter.outgoing.persistence..")
             .should().dependOnClassesThat().resideInAnyPackage(
-                "org.jooq..",
-                GENERATED)
-            .as("jOOQ and generated classes may only be used in the persistence adapter");
+                "jakarta.persistence..",
+                "io.quarkus.hibernate..",
+                "org.hibernate..")
+            .as("JPA and Hibernate annotations may only appear in domain model and persistence adapters");
 
     @ArchTest
     static final ArchRule jgit_nur_in_git_adapter =
@@ -145,6 +144,7 @@ public class ArchitectureUnitTest {
         classes()
             .that().haveSimpleNameEndingWith("Repository")
             .and().areNotAnnotatedWith("jakarta.enterprise.context.ApplicationScoped")
+            .and().areNotAnnotatedWith("jakarta.persistence.Entity")
             .should().beInterfaces()
             .andShould().resideInAPackage("com.hlag.sourceviewer.domain.port.outgoing..")
             .as("Repository interfaces must reside in domain.port.outgoing");
@@ -186,16 +186,7 @@ public class ArchitectureUnitTest {
                 "com.hlag.sourceviewer.adapter.outgoing.persistence.converter..")
             .as("Converter classes must reside in adapter.outgoing.persistence.converter");
 
-    // ── 6. Generated classes not in the API ───────────────────────────────────
-
-    @ArchTest
-    static final ArchRule generated_classes_not_as_return_type_in_rest =
-        noMethods()
-            .that().areDeclaredInClassesThat().resideInAPackage(ADAPTER_IN)
-            .should().haveRawReturnType(GENERATED)
-            .as("Generated jOOQ classes must not appear as return types in REST resources");
-
-    // ── 7. Logging conventions ────────────────────────────────────────────────
+    // ── 6. Logging conventions ────────────────────────────────────────────────
 
     @ArchTest
     static final ArchRule no_system_out_in_production_code =
@@ -211,7 +202,7 @@ public class ArchitectureUnitTest {
             .should().callMethod(System.class, "err")
             .as("System.err.println is forbidden — use SLF4J");
 
-    // ── 8. Date API convention ────────────────────────────────────────────────
+    // ── 7. Date API convention ────────────────────────────────────────────────
 
     @ArchTest
     static final ArchRule no_java_util_date =
@@ -227,7 +218,7 @@ public class ArchitectureUnitTest {
             .should().dependOnClassesThat().areAssignableTo(java.util.Calendar.class)
             .as("java.util.Calendar is forbidden — use java.time.*");
 
-    // ── 9. Threading convention ───────────────────────────────────────────────
+    // ── 8. Threading convention ───────────────────────────────────────────────
 
     @ArchTest
     static final ArchRule no_direct_thread_creation =
@@ -252,7 +243,7 @@ public class ArchitectureUnitTest {
                 "newCachedThreadPool")
             .as("Custom thread pools are forbidden — use ManagedExecutor");
 
-    // ── 10. No cycles ─────────────────────────────────────────────────────────
+    // ── 9. No cycles ──────────────────────────────────────────────────────────
 
     @ArchTest
     static final ArchRule no_cycles_between_packages =

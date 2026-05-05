@@ -1,13 +1,20 @@
 package com.hlag.sourceviewer.adapter.outgoing.persistence.converter;
 
 import com.hlag.sourceviewer.domain.model.identifier.ReferenceIdentifier;
+import jakarta.persistence.AttributeConverter;
+import jakarta.persistence.Converter;
 
-/**
- * jOOQ-Converter zwischen {@code BIGINT} und {@link ReferenceIdentifier}.
- */
-public class ReferenceIdentifierConverter extends LongIdentifierConverter<ReferenceIdentifier> {
+@Converter(autoApply = true)
+public class ReferenceIdentifierConverter
+        implements AttributeConverter<ReferenceIdentifier, Long> {
 
-    public ReferenceIdentifierConverter() {
-        super(ReferenceIdentifier.class, ReferenceIdentifier::new);
+    @Override
+    public Long convertToDatabaseColumn(ReferenceIdentifier attribute) {
+        return attribute == null ? null : attribute.value();
+    }
+
+    @Override
+    public ReferenceIdentifier convertToEntityAttribute(Long dbData) {
+        return dbData == null ? null : new ReferenceIdentifier(dbData);
     }
 }
