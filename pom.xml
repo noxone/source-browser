@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.hlag</groupId>
+    <artifactId>sourceviewer</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>Java Source Viewer</name>
+    <description>
+        Indexes Java source code from multiple Git repositories and offers
+        an interactive web interface for code exploration.
+    </description>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <!-- Quarkus -->
+        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+        <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
+        <quarkus.platform.version>3.15.1</quarkus.platform.version>
+
+        <!-- Libraries -->
+        <javaparser.version>3.26.1</javaparser.version>
+        <jgit.version>6.10.1.202505221210-r</jgit.version>
+        <jooq.version>3.21.2</jooq.version>
+        <archunit.version>1.4.2</archunit.version>
+        <mapstruct.version>1.6.3</mapstruct.version>
+
+        <!-- Build plugins -->
+        <compiler.plugin.version>3.15.0</compiler.plugin.version>
+        <surefire.plugin.version>3.5.5</surefire.plugin.version>
+        <jooq.codegen.plugin.version>3.19.11</jooq.codegen.plugin.version>
+        <flyway.plugin.version>10.17.0</flyway.plugin.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>${quarkus.platform.artifact-id}</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+
+        <!-- ── Quarkus ──────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jdbc-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-qute</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-health</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
+        </dependency>
+        <!-- MicroProfile Context Propagation für ManagedExecutor -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-context-propagation</artifactId>
+        </dependency>
+
+        <!-- ── jOOQ ─────────────────────────────────────────────────── -->
+        <!-- Quarkus jOOQ Extension (Community) -->
+        <dependency>
+            <groupId>io.quarkiverse.jooq</groupId>
+            <artifactId>quarkus-jooq</artifactId>
+            <version>2.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jooq</groupId>
+            <artifactId>jooq</artifactId>
+            <version>${jooq.version}</version>
+        </dependency>
+
+        <!-- ── JavaParser ────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-symbol-solver-core</artifactId>
+            <version>${javaparser.version}</version>
+        </dependency>
+
+        <!-- ── JGit ─────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>org.eclipse.jgit</groupId>
+            <artifactId>org.eclipse.jgit</artifactId>
+            <version>${jgit.version}</version>
+        </dependency>
+
+        <!-- ── MapStruct ─────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct</artifactId>
+            <version>${mapstruct.version}</version>
+        </dependency>
+
+        <!-- ── Tests ─────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>3.27.7</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-common</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Testcontainers for infrastructure tests -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- ArchUnit -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <!-- ── Quarkus ────────────────────────────────────────────── -->
+            <plugin>
+                <groupId>${quarkus.platform.group-id}</groupId>
+                <artifactId>quarkus-maven-plugin</artifactId>
+                <version>${quarkus.platform.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>build</goal>
+                            <goal>generate-code</goal>
+                            <goal>generate-code-tests</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- ── Compiler (with MapStruct processor) ────────────────── -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${compiler.plugin.version}</version>
+                <configuration>
+                    <release>21</release>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.mapstruct</groupId>
+                            <artifactId>mapstruct-processor</artifactId>
+                            <version>${mapstruct.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+
+            <!-- ── Surefire ───────────────────────────────────────────── -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${surefire.plugin.version}</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <java.util.logging.manager>
+                            org.jboss.logmanager.LogManager
+                        </java.util.logging.manager>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+
+            <!-- ── jOOQ Code Generator ─────────────────────────────────── -->
+            <!--
+                Runs in the generate-sources phase.
+                Starts PostgreSQL via Testcontainers, runs Flyway migrations,
+                and then generates jOOQ classes from the resulting schema.
+                This keeps the database as the single source of truth.
+            -->
+            <plugin>
+                <groupId>org.jooq</groupId>
+                <artifactId>jooq-codegen-maven</artifactId>
+                <version>${jooq.codegen.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>jooq-codegen</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <jdbc>
+                        <!--
+                            A separate configuration file is used for the code generator,
+                            which can be controlled via Maven properties or Testcontainers lifecycle.
+                            By default, the local Docker database is used
+                            (docker compose up -d postgres).
+                        -->
+                        <driver>org.postgresql.Driver</driver>
+                        <url>jdbc:postgresql://localhost:5432/sourceviewer</url>
+                        <user>sourceviewer</user>
+                        <password>sourceviewer</password>
+                    </jdbc>
+                    <generator>
+                        <name>org.jooq.codegen.JavaGenerator</name>
+                        <database>
+                            <name>org.jooq.meta.postgres.PostgresDatabase</name>
+                            <inputSchema>public</inputSchema>
+                            <excludes>flyway_schema_history</excludes>
+                            <!-- Wrapper type mappings (ForcedTypes) -->
+                            <forcedTypes>
+                                <forcedType>
+                                    <userType>com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier</userType>
+                                    <converter>com.hlag.sourceviewer.adapter.outgoing.persistence.converter.RepositoryIdentifierConverter</converter>
+                                    <includeExpression>repository\.id|.*\.repository_id</includeExpression>
+                                    <includeTypes>BIGINT|INTEGER</includeTypes>
+                                </forcedType>
+                                <forcedType>
+                                    <userType>com.hlag.sourceviewer.domain.model.identifier.FileIdentifier</userType>
+                                    <converter>com.hlag.sourceviewer.adapter.outgoing.persistence.converter.FileIdentifierConverter</converter>
+                                    <includeExpression>source_file\.id|.*\.file_id</includeExpression>
+                                    <includeTypes>BIGINT</includeTypes>
+                                </forcedType>
+                                <forcedType>
+                                    <userType>com.hlag.sourceviewer.domain.model.identifier.SymbolIdentifier</userType>
+                                    <converter>com.hlag.sourceviewer.adapter.outgoing.persistence.converter.SymbolIdentifierConverter</converter>
+                                    <includeExpression>symbol\.id|.*\.symbol_id</includeExpression>
+                                    <includeTypes>BIGINT</includeTypes>
+                                </forcedType>
+                                <forcedType>
+                                    <userType>com.hlag.sourceviewer.domain.model.identifier.ReferenceIdentifier</userType>
+                                    <converter>com.hlag.sourceviewer.adapter.outgoing.persistence.converter.ReferenceIdentifierConverter</converter>
+                                    <includeExpression>reference\.id</includeExpression>
+                                    <includeTypes>BIGINT</includeTypes>
+                                </forcedType>
+                                <forcedType>
+                                    <userType>com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier</userType>
+                                    <converter>com.hlag.sourceviewer.adapter.outgoing.persistence.converter.ScanJobIdentifierConverter</converter>
+                                    <includeExpression>scan_job\.id</includeExpression>
+                                    <includeTypes>BIGINT</includeTypes>
+                                </forcedType>
+                                <forcedType>
+                                    <userType>com.hlag.sourceviewer.domain.model.identifier.LineNumber</userType>
+                                    <converter>com.hlag.sourceviewer.adapter.outgoing.persistence.converter.LineNumberConverter</converter>
+                                    <includeExpression>.*\.line|.*\.line_start|.*\.line_end</includeExpression>
+                                    <includeTypes>INTEGER</includeTypes>
+                                </forcedType>
+                                <forcedType>
+                                    <userType>com.hlag.sourceviewer.domain.model.identifier.ColumnNumber</userType>
+                                    <converter>com.hlag.sourceviewer.adapter.outgoing.persistence.converter.ColumnNumberConverter</converter>
+                                    <includeExpression>.*\.column_start|.*\.column_end</includeExpression>
+                                    <includeTypes>INTEGER</includeTypes>
+                                </forcedType>
+                            </forcedTypes>
+                        </database>
+                        <generate>
+                            <pojos>true</pojos>
+                            <pojosEqualsAndHashCode>true</pojosEqualsAndHashCode>
+                            <fluentSetters>true</fluentSetters>
+                            <javaTimeTypes>true</javaTimeTypes>
+                            <records>true</records>
+                        </generate>
+                        <target>
+                            <packageName>com.hlag.sourceviewer.generated.jooq</packageName>
+                            <directory>target/generated-sources/jooq</directory>
+                        </target>
+                    </generator>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.postgresql</groupId>
+                        <artifactId>postgresql</artifactId>
+                        <version>42.7.3</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>native</id>
+            <activation>
+                <property>
+                    <name>native</name>
+                </property>
+            </activation>
+            <properties>
+                <skipITs>false</skipITs>
+                <quarkus.package.output-name>sourceviewer</quarkus.package.output-name>
+                <quarkus.native.enabled>true</quarkus.native.enabled>
+            </properties>
+        </profile>
+    </profiles>
+
+</project>
