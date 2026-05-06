@@ -1,6 +1,7 @@
 package com.hlag.sourceviewer.adapter.incoming.webhook;
 
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.ScanTriggerDto;
+import com.hlag.sourceviewer.adapter.incoming.rest.dto.ScanTriggerResponseDto;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
@@ -61,6 +62,4 @@ public class GitWebhookResource {
                 .entity(new ScanTriggerResponseDto(scanJob.identifier().value()))
                 .build();
     }
-
-    public record ScanTriggerResponseDto(Long scanJobId) {}
 }

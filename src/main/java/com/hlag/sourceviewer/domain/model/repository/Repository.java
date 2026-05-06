@@ -1,11 +1,17 @@
 package com.hlag.sourceviewer.domain.model.repository;
 
+import com.hlag.sourceviewer.domain.model.converter.BranchNameConverter;
+import com.hlag.sourceviewer.domain.model.converter.CommitShaConverter;
+import com.hlag.sourceviewer.domain.model.converter.DisplayNameConverter;
+import com.hlag.sourceviewer.domain.model.converter.FilePathConverter;
+import com.hlag.sourceviewer.domain.model.converter.RepositoryIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.identifier.BranchName;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -22,24 +28,30 @@ public class Repository {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Convert(converter = RepositoryIdentifierConverter.class)
     private RepositoryIdentifier identifier;
 
     @Column(name = "name", nullable = false, unique = true)
+    @Convert(converter = DisplayNameConverter.class)
     private DisplayName name;
 
     @Column(name = "remote_url")
+    @Convert(converter = FilePathConverter.class)
     private FilePath remoteUrl;
 
     @Column(name = "local_path", nullable = false)
+    @Convert(converter = FilePathConverter.class)
     private FilePath localPath;
 
     @Column(name = "default_branch", nullable = false)
+    @Convert(converter = BranchNameConverter.class)
     private BranchName defaultBranch;
 
     @Column(name = "last_scanned_at")
     private Instant lastScannedAt;
 
     @Column(name = "last_commit_sha")
+    @Convert(converter = CommitShaConverter.class)
     private CommitSha lastCommitSha;
 
     protected Repository() {}

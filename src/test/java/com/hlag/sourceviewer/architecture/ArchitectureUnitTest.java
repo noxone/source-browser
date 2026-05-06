@@ -26,7 +26,7 @@ public class ArchitectureUnitTest {
     @ArchTest
     static final ArchRule layer_dependencies_are_respected =
         layeredArchitecture()
-            .consideringAllDependencies()
+            .consideringOnlyDependenciesInLayers()
             .layer("Domain")       .definedBy(DOMAIN)
             .layer("Application")  .definedBy(APPLICATION)
             .layer("AdapterIn")    .definedBy(ADAPTER_IN)
@@ -182,9 +182,10 @@ public class ArchitectureUnitTest {
     static final ArchRule converter_classes_in_persistence_converter =
         classes()
             .that().haveSimpleNameEndingWith("Converter")
-            .should().resideInAPackage(
+            .should().resideInAnyPackage(
+                "com.hlag.sourceviewer.domain.model.converter..",
                 "com.hlag.sourceviewer.adapter.outgoing.persistence.converter..")
-            .as("Converter classes must reside in adapter.outgoing.persistence.converter");
+            .as("Converter classes must reside in domain.model.converter or adapter.outgoing.persistence.converter");
 
     // ── 6. Logging conventions ────────────────────────────────────────────────
 

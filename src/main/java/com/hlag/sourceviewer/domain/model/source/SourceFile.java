@@ -1,5 +1,11 @@
 package com.hlag.sourceviewer.domain.model.source;
 
+import com.hlag.sourceviewer.domain.model.converter.BranchNameConverter;
+import com.hlag.sourceviewer.domain.model.converter.ContentShaConverter;
+import com.hlag.sourceviewer.domain.model.converter.DisplayNameConverter;
+import com.hlag.sourceviewer.domain.model.converter.FileIdentifierConverter;
+import com.hlag.sourceviewer.domain.model.converter.FilePathConverter;
+import com.hlag.sourceviewer.domain.model.converter.RepositoryIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.identifier.BranchName;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
@@ -7,6 +13,7 @@ import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.repository.ContentSha;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -27,21 +34,27 @@ public class SourceFile {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Convert(converter = FileIdentifierConverter.class)
     private FileIdentifier identifier;
 
     @Column(name = "repository_id", nullable = false)
+    @Convert(converter = RepositoryIdentifierConverter.class)
     private RepositoryIdentifier repositoryIdentifier;
 
     @Column(name = "branch", nullable = false)
+    @Convert(converter = BranchNameConverter.class)
     private BranchName branch;
 
     @Column(name = "path", nullable = false)
+    @Convert(converter = FilePathConverter.class)
     private FilePath path;
 
     @Column(name = "content_sha", nullable = false)
+    @Convert(converter = ContentShaConverter.class)
     private ContentSha contentSha;
 
     @Column(name = "language", nullable = false)
+    @Convert(converter = DisplayNameConverter.class)
     private DisplayName language;
 
     @Column(name = "indexed_at", nullable = false)

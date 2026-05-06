@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Source File</title>
+</head>
+<body>
+    <h1>File {file.fileIdentifier.value}</h1>
+    <ul>
+        {#for symbol in file.symbols}
+        <li>{symbol.name.value} ({symbol.kind})</li>
+        {/for}
+    </ul>
+</body>
+</html>

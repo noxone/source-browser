@@ -1,5 +1,11 @@
 package com.hlag.sourceviewer.domain.model.source;
 
+import com.hlag.sourceviewer.domain.model.converter.ColumnNumberConverter;
+import com.hlag.sourceviewer.domain.model.converter.FileIdentifierConverter;
+import com.hlag.sourceviewer.domain.model.converter.LineNumberConverter;
+import com.hlag.sourceviewer.domain.model.converter.QualifiedNameConverter;
+import com.hlag.sourceviewer.domain.model.converter.SimpleNameConverter;
+import com.hlag.sourceviewer.domain.model.converter.SymbolIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.identifier.ColumnNumber;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.LineNumber;
@@ -8,6 +14,7 @@ import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -29,9 +36,11 @@ public class Symbol {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Convert(converter = SymbolIdentifierConverter.class)
     private SymbolIdentifier identifier;
 
     @Column(name = "file_id", nullable = false)
+    @Convert(converter = FileIdentifierConverter.class)
     private FileIdentifier fileIdentifier;
 
     @Enumerated(EnumType.STRING)
@@ -39,21 +48,27 @@ public class Symbol {
     private SymbolKind kind;
 
     @Column(name = "name", nullable = false)
+    @Convert(converter = SimpleNameConverter.class)
     private SimpleName name;
 
     @Column(name = "qualified_name", nullable = false)
+    @Convert(converter = QualifiedNameConverter.class)
     private QualifiedName qualifiedName;
 
     @Column(name = "signature")
+    @Convert(converter = SimpleNameConverter.class)
     private SimpleName signature;
 
     @Column(name = "line_start")
+    @Convert(converter = LineNumberConverter.class)
     private LineNumber lineStart;
 
     @Column(name = "line_end")
+    @Convert(converter = LineNumberConverter.class)
     private LineNumber lineEnd;
 
     @Column(name = "column_start")
+    @Convert(converter = ColumnNumberConverter.class)
     private ColumnNumber columnStart;
 
     @Column(name = "modifiers", columnDefinition = "text[]")

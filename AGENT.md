@@ -231,7 +231,13 @@ Certain frameworks may only appear in designated packages:
   `adapter.incoming.view.dto..`.
 - Classes with the suffix `Mapper` reside in
   `adapter.outgoing.persistence.mapping..`.
-- Classes with the suffix `Converter` (for jOOQ) reside in
+- Classes with the suffix `Converter` that implement `jakarta.persistence.AttributeConverter`
+  (JPA attribute converters for domain wrapper types) reside in
+  `domain.model.converter..`. They belong to the domain because they describe
+  how domain value objects serialize to basic database types, use only
+  `jakarta.persistence.*` (already permitted in domain), and must be discovered
+  by Hibernate alongside the entities they serve.
+  jOOQ-specific converters, should they ever be introduced, reside in
   `adapter.outgoing.persistence.converter..`.
 
 ### 4.6 Type Safety for Attributes (Wrapper Requirement)
@@ -460,6 +466,13 @@ investigations are warranted.
 
 When this project is further developed with the help of an AI assistant:
 
+- **Verify Java version before starting.** This project requires Java 21.
+  Before beginning any work, run `java -version` and confirm the output
+  shows version 21 (e.g. `openjdk version "21.x.x"`).
+  If the version is incorrect, stop and ask the user how to proceed
+  (e.g. which JDK to use, how to set `JAVA_HOME`, or whether to use a
+  wrapper like `mvn -Djava.home=...`). Do not attempt to build or run
+  tests with an incompatible Java version.
 - **This file is authoritative.** In case of conflict between an AI
   recommendation and a rule here, this file wins.
 - **Architecture rules are not circumvented.** If a rule is in the way,

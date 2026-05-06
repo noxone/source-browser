@@ -1,4 +1,4 @@
-package com.hlag.sourceviewer.adapter.outgoing.persistence.converter;
+package com.hlag.sourceviewer.domain.model.converter;
 
 import com.hlag.sourceviewer.domain.model.identifier.ErrorMessage;
 import jakarta.persistence.AttributeConverter;
