@@ -50,4 +50,14 @@ public class PanacheRepositoryStore implements RepositoryStore {
     public void update(Repository repository) {
         em.merge(repository);
     }
+
+    /** @inheritDoc */
+    @Override
+    @Transactional
+    public void delete(RepositoryIdentifier identifier) {
+        Repository entity = em.find(Repository.class, identifier.value());
+        if (entity != null) {
+            em.remove(entity);
+        }
+    }
 }

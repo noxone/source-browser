@@ -24,4 +24,12 @@ public interface RepositoryStore {
     RepositoryIdentifier insert(Repository repository);
 
     void update(Repository repository);
+
+    /**
+     * Removes the repository with the given identifier from the store.
+     * Does nothing if no repository with that identifier exists.
+     *
+     * @param identifier the identifier of the repository to remove
+     */
+    void delete(RepositoryIdentifier identifier);
 }
