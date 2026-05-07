@@ -19,6 +19,7 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,9 @@ import java.util.List;
 public class JGitAccess implements GitAccess {
 
     private static final Logger logger = LoggerFactory.getLogger(JGitAccess.class);
+
+    @ConfigProperty(name = "sourceviewer.repos.base-path")
+    String reposBasePath;
 
     @Override
     public CommitSha fetchRemoteHeadSha(Repository repository, BranchName branch) {
@@ -102,8 +106,9 @@ public class JGitAccess implements GitAccess {
     }
 
     private org.eclipse.jgit.lib.Repository openGitRepository(Repository repository) throws IOException {
+        File repoDir = new File(reposBasePath, repository.name().value());
         return new FileRepositoryBuilder()
-                .setGitDir(new File(repository.localPath().value(), ".git"))
+                .setGitDir(new File(repoDir, ".git"))
                 .readEnvironment()
                 .findGitDir()
                 .build();

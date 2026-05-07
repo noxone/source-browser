@@ -30,9 +30,6 @@ public class Repository {
     @Column(name = "remote_url")
     private FilePath remoteUrl;
 
-    @Column(name = "local_path", nullable = false)
-    private FilePath localPath;
-
     @Column(name = "default_branch", nullable = false)
     private BranchName defaultBranch;
 
@@ -47,13 +44,11 @@ public class Repository {
     public Repository(
             DisplayName name,
             Optional<FilePath> remoteUrl,
-            FilePath localPath,
             BranchName defaultBranch,
             Optional<Instant> lastScannedAt,
             Optional<CommitSha> lastCommitSha) {
         this.name = name;
         this.remoteUrl = remoteUrl.orElse(null);
-        this.localPath = localPath;
         this.defaultBranch = defaultBranch;
         this.lastScannedAt = lastScannedAt.orElse(null);
         this.lastCommitSha = lastCommitSha.orElse(null);
@@ -62,14 +57,12 @@ public class Repository {
     public RepositoryIdentifier identifier() { return id != null ? new RepositoryIdentifier(id) : null; }
     public DisplayName name() { return name; }
     public Optional<FilePath> remoteUrl() { return Optional.ofNullable(remoteUrl); }
-    public FilePath localPath() { return localPath; }
     public BranchName defaultBranch() { return defaultBranch; }
     public Optional<Instant> lastScannedAt() { return Optional.ofNullable(lastScannedAt); }
     public Optional<CommitSha> lastCommitSha() { return Optional.ofNullable(lastCommitSha); }
 
     public void setName(DisplayName name) { this.name = name; }
     public void setRemoteUrl(FilePath remoteUrl) { this.remoteUrl = remoteUrl; }
-    public void setLocalPath(FilePath localPath) { this.localPath = localPath; }
     public void setDefaultBranch(BranchName defaultBranch) { this.defaultBranch = defaultBranch; }
     public void setLastScannedAt(Instant lastScannedAt) { this.lastScannedAt = lastScannedAt; }
     public void setLastCommitSha(CommitSha lastCommitSha) { this.lastCommitSha = lastCommitSha; }
