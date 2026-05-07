@@ -48,7 +48,6 @@ public class ManageRepositoriesService implements ManageRepositoriesUseCase {
         var repository = new Repository(
                 command.name(),
                 command.remoteUrl(),
-                command.localPath(),
                 command.defaultBranch(),
                 Optional.empty(),
                 Optional.empty()
@@ -68,7 +67,6 @@ public class ManageRepositoriesService implements ManageRepositoriesUseCase {
                         "Repository not found: " + command.identifier().value()));
         repository.setName(command.name());
         repository.setRemoteUrl(command.remoteUrl().orElse(null));
-        repository.setLocalPath(command.localPath());
         repository.setDefaultBranch(command.defaultBranch());
         repositoryStore.update(repository);
         logger.info("Updated repository {}", command.identifier().value());

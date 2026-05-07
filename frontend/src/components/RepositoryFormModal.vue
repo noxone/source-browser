@@ -39,19 +39,6 @@
 
         <div>
           <label class="block text-sm font-medium text-gray-700 mb-1">
-            Local Path <span class="text-red-500">*</span>
-          </label>
-          <input
-            v-model="form.localPath"
-            type="text"
-            required
-            placeholder="/srv/repos/my-project"
-            class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-          />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">
             Default Branch <span class="text-red-500">*</span>
           </label>
           <input
@@ -108,7 +95,6 @@ const isEditing = computed(() => props.repository !== undefined)
 const form = ref({
   name: '',
   remoteUrl: '',
-  localPath: '',
   defaultBranch: 'main'
 })
 
@@ -119,7 +105,6 @@ onMounted(() => {
   if (props.repository) {
     form.value.name = props.repository.name
     form.value.remoteUrl = props.repository.remoteUrl ?? ''
-    form.value.localPath = props.repository.localPath
     form.value.defaultBranch = props.repository.defaultBranch
   }
 })
@@ -135,7 +120,6 @@ async function handleSubmit() {
       const request: UpdateRepositoryRequest = {
         name: form.value.name.trim(),
         remoteUrl,
-        localPath: form.value.localPath.trim(),
         defaultBranch: form.value.defaultBranch.trim()
       }
       const updated = await updateRepository(props.repository.id, request)
@@ -144,7 +128,6 @@ async function handleSubmit() {
       const request: CreateRepositoryRequest = {
         name: form.value.name.trim(),
         remoteUrl,
-        localPath: form.value.localPath.trim(),
         defaultBranch: form.value.defaultBranch.trim()
       }
       const created = await createRepository(request)

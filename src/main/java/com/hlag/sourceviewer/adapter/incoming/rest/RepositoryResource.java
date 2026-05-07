@@ -69,7 +69,6 @@ public class RepositoryResource {
         var command = new CreateRepositoryCommand(
                 new DisplayName(request.name()),
                 Optional.ofNullable(request.remoteUrl()).filter(s -> !s.isBlank()).map(FilePath::new),
-                new FilePath(request.localPath()),
                 new BranchName(request.defaultBranch() != null ? request.defaultBranch() : "main")
         );
 
@@ -90,7 +89,6 @@ public class RepositoryResource {
                 new RepositoryIdentifier(id),
                 new DisplayName(request.name()),
                 Optional.ofNullable(request.remoteUrl()).filter(s -> !s.isBlank()).map(FilePath::new),
-                new FilePath(request.localPath()),
                 new BranchName(request.defaultBranch() != null ? request.defaultBranch() : "main")
         );
 
@@ -114,7 +112,6 @@ public class RepositoryResource {
                 repository.identifier().value(),
                 repository.name().value(),
                 repository.remoteUrl().map(FilePath::value).orElse(null),
-                repository.localPath().value(),
                 repository.defaultBranch().value(),
                 repository.lastScannedAt().map(Object::toString).orElse(null),
                 repository.lastCommitSha().map(sha -> sha.value()).orElse(null)
