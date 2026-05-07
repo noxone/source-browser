@@ -6,7 +6,10 @@
       "Bash(mvn compiler:compile -e)",
       "Bash(timeout 30 mvn quarkus:dev -Dquarkus.args=\"\")",
       "Bash(timeout 45 mvn quarkus:dev -Dquarkus.args=\"\")",
-      "Bash(mvn compiler:compile -q)"
+      "Bash(mvn compiler:compile -q)",
+      "Bash(java *)",
+      "Bash(mvn clean *)",
+      "WebFetch(domain:quarkus.io)"
     ]
   }
 }

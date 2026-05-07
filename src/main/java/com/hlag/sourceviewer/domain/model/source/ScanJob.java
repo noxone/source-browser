@@ -3,7 +3,6 @@ package com.hlag.sourceviewer.domain.model.source;
 import com.hlag.sourceviewer.domain.model.converter.CommitShaConverter;
 import com.hlag.sourceviewer.domain.model.converter.ErrorMessageConverter;
 import com.hlag.sourceviewer.domain.model.converter.RepositoryIdentifierConverter;
-import com.hlag.sourceviewer.domain.model.converter.ScanJobIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.converter.TokenCountConverter;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.ErrorMessage;
@@ -30,8 +29,7 @@ public class ScanJob {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Convert(converter = ScanJobIdentifierConverter.class)
-    private ScanJobIdentifier identifier;
+    private Long id;
 
     @Column(name = "repository_id", nullable = false)
     @Convert(converter = RepositoryIdentifierConverter.class)
@@ -69,7 +67,6 @@ public class ScanJob {
     protected ScanJob() {}
 
     public ScanJob(
-            ScanJobIdentifier identifier,
             RepositoryIdentifier repositoryIdentifier,
             TriggerType triggerType,
             Optional<CommitSha> commitSha,
@@ -79,7 +76,6 @@ public class ScanJob {
             Optional<Instant> finishedAt,
             TokenCount filesScanned,
             Optional<ErrorMessage> errorMessage) {
-        this.identifier = identifier;
         this.repositoryIdentifier = repositoryIdentifier;
         this.triggerType = triggerType;
         this.commitSha = commitSha.orElse(null);
@@ -91,7 +87,7 @@ public class ScanJob {
         this.errorMessage = errorMessage.orElse(null);
     }
 
-    public ScanJobIdentifier identifier() { return identifier; }
+    public ScanJobIdentifier identifier() { return id != null ? new ScanJobIdentifier(id) : null; }
     public RepositoryIdentifier repositoryIdentifier() { return repositoryIdentifier; }
     public TriggerType triggerType() { return triggerType; }
     public Optional<CommitSha> commitSha() { return Optional.ofNullable(commitSha); }

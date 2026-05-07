@@ -13,11 +13,11 @@ import java.util.Optional;
 
 @ApplicationScoped
 public class PanacheScanJobRepository
-        implements ScanJobRepository, PanacheRepositoryBase<ScanJob, ScanJobIdentifier> {
+        implements ScanJobRepository, PanacheRepositoryBase<ScanJob, Long> {
 
     @Override
     public Optional<ScanJob> findByIdentifier(ScanJobIdentifier identifier) {
-        return findByIdOptional(identifier);
+        return findByIdOptional(identifier.value());
     }
 
     @Override

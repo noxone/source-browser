@@ -42,7 +42,6 @@ public class ScanRepositoryService implements ScanRepositoryUseCase {
                         "Repository not found: " + command.repositoryIdentifier().value()));
 
         var scanJob = new ScanJob(
-                null,
                 command.repositoryIdentifier(),
                 command.triggerType(),
                 command.commitSha(),
@@ -54,25 +53,13 @@ public class ScanRepositoryService implements ScanRepositoryUseCase {
                 Optional.empty()
         );
 
-        var identifier = scanJobRepository.insert(scanJob);
-        var persistedJob = new ScanJob(
-                identifier,
-                scanJob.repositoryIdentifier(),
-                scanJob.triggerType(),
-                scanJob.commitSha(),
-                scanJob.status(),
-                scanJob.queuedAt(),
-                scanJob.startedAt(),
-                scanJob.finishedAt(),
-                scanJob.filesScanned(),
-                scanJob.errorMessage()
-        );
+        scanJobRepository.insert(scanJob);
 
         logger.info("Scan job {} queued for repository {} (trigger: {})",
-                identifier.value(),
+                scanJob.identifier().value(),
                 command.repositoryIdentifier().value(),
                 command.triggerType());
 
-        return persistedJob;
+        return scanJob;
     }
 }

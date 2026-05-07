@@ -22,7 +22,7 @@ public class PanacheRepositoryStore implements RepositoryStore {
 
     @Override
     public Optional<Repository> findByIdentifier(RepositoryIdentifier identifier) {
-        return Optional.ofNullable(em.find(Repository.class, identifier));
+        return Optional.ofNullable(em.find(Repository.class, identifier.value()));
     }
 
     @Override

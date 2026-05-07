@@ -340,7 +340,40 @@ cycles. ArchUnit checks this via `slices()`.
 - `printStackTrace()` is forbidden — exceptions are logged or re-thrown,
   never silently swallowed.
 
-### 4.11 General Code Hygiene
+### 4.11 JavaDoc Conventions
+
+Every public class and every public or protected method must have a JavaDoc comment.
+Comments describe the **contract** (what the element guarantees to callers), not the
+implementation (how it is done internally).
+
+**Class-level JavaDoc:**
+- One sentence that names the responsibility of the class.
+- If necessary, a second paragraph with relevant constraints or usage notes.
+- Do **not** describe the internals or implementation strategy.
+
+**Method-level JavaDoc:**
+- First sentence: what the method does from the caller's perspective (imperative mood,
+  e.g. "Returns the symbol identified by …", "Creates a new scan job for …").
+- `@param` tags for every parameter whose meaning is not fully obvious from the name alone.
+- `@return` tag unless the return type is `void` or the first sentence already describes the return value unambiguously.
+- `@throws` tag **only** for checked exceptions (always) and for unchecked exceptions
+  only if the method **directly** throws them (explicit `throw` statement) or if they
+  are an unavoidable consequence of the contract (e.g. `NullPointerException` for a
+  non-null contract). Do **not** document unchecked exceptions that originate somewhere
+  deep in the call stack and are not part of the method's own contract.
+
+**Overriding methods:**
+- Annotated with `@Override` must carry exactly `/** @inheritDoc */` — no further text.
+  The contract is already defined on the interface or superclass.
+
+**Formatting:**
+- Use standard HTML tags (`<p>`, `<ul>`, `<li>`, `<code>`, `<pre>`) for multi-paragraph
+  or structured content. Do not use Markdown inside JavaDoc.
+- Keep the first sentence on one line so that it appears correctly as the summary in
+  generated documentation.
+- Avoid padding with obvious or redundant sentences ("This method …", "This class …").
+
+### 4.13 General Code Hygiene
 
 - No use of `java.util.Date` and `java.util.Calendar` —
   use `java.time.*` exclusively.
@@ -349,7 +382,7 @@ cycles. ArchUnit checks this via `slices()`.
 - No generic `Exception`/`RuntimeException` as thrown types —
   use specific exception classes.
 
-### 4.12 Threading
+### 4.14 Threading
 
 - **No direct thread handling.** Code must not create or start `Thread`
   instances (`new Thread(...)`, `thread.start()`).
@@ -368,7 +401,7 @@ cycles. ArchUnit checks this via `slices()`.
   shutdown behavior. Self-created threads bypass all of this and lead
   to resource leaks and untraceable behavior.
 
-### 4.13 Tests
+### 4.15 Tests
 
 - Test classes reside in the same package as the class under test, but
   under `src/test/java`.

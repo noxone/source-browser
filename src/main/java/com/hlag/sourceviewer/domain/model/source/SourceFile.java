@@ -3,7 +3,6 @@ package com.hlag.sourceviewer.domain.model.source;
 import com.hlag.sourceviewer.domain.model.converter.BranchNameConverter;
 import com.hlag.sourceviewer.domain.model.converter.ContentShaConverter;
 import com.hlag.sourceviewer.domain.model.converter.DisplayNameConverter;
-import com.hlag.sourceviewer.domain.model.converter.FileIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.converter.FilePathConverter;
 import com.hlag.sourceviewer.domain.model.converter.RepositoryIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.identifier.BranchName;
@@ -34,8 +33,7 @@ public class SourceFile {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Convert(converter = FileIdentifierConverter.class)
-    private FileIdentifier identifier;
+    private Long id;
 
     @Column(name = "repository_id", nullable = false)
     @Convert(converter = RepositoryIdentifierConverter.class)
@@ -63,14 +61,12 @@ public class SourceFile {
     protected SourceFile() {}
 
     public SourceFile(
-            FileIdentifier identifier,
             RepositoryIdentifier repositoryIdentifier,
             BranchName branch,
             FilePath path,
             ContentSha contentSha,
             DisplayName language,
             Instant indexedAt) {
-        this.identifier = identifier;
         this.repositoryIdentifier = repositoryIdentifier;
         this.branch = branch;
         this.path = path;
@@ -79,7 +75,7 @@ public class SourceFile {
         this.indexedAt = indexedAt;
     }
 
-    public FileIdentifier identifier() { return identifier; }
+    public FileIdentifier identifier() { return id != null ? new FileIdentifier(id) : null; }
     public RepositoryIdentifier repositoryIdentifier() { return repositoryIdentifier; }
     public BranchName branch() { return branch; }
     public FilePath path() { return path; }

@@ -5,7 +5,6 @@ import com.hlag.sourceviewer.domain.model.converter.FileIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.converter.LineNumberConverter;
 import com.hlag.sourceviewer.domain.model.converter.QualifiedNameConverter;
 import com.hlag.sourceviewer.domain.model.converter.SimpleNameConverter;
-import com.hlag.sourceviewer.domain.model.converter.SymbolIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.identifier.ColumnNumber;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.LineNumber;
@@ -36,8 +35,7 @@ public class Symbol {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Convert(converter = SymbolIdentifierConverter.class)
-    private SymbolIdentifier identifier;
+    private Long id;
 
     @Column(name = "file_id", nullable = false)
     @Convert(converter = FileIdentifierConverter.class)
@@ -82,7 +80,6 @@ public class Symbol {
     protected Symbol() {}
 
     public Symbol(
-            SymbolIdentifier identifier,
             FileIdentifier fileIdentifier,
             SymbolKind kind,
             SimpleName name,
@@ -92,7 +89,6 @@ public class Symbol {
             Optional<LineNumber> lineEnd,
             Optional<ColumnNumber> columnStart,
             List<String> modifiers) {
-        this.identifier = identifier;
         this.fileIdentifier = fileIdentifier;
         this.kind = kind;
         this.name = name;
@@ -104,7 +100,7 @@ public class Symbol {
         this.modifiers = modifiers == null ? new String[0] : modifiers.toArray(String[]::new);
     }
 
-    public SymbolIdentifier identifier() { return identifier; }
+    public SymbolIdentifier identifier() { return id != null ? new SymbolIdentifier(id) : null; }
     public FileIdentifier fileIdentifier() { return fileIdentifier; }
     public SymbolKind kind() { return kind; }
     public SimpleName name() { return name; }

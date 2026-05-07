@@ -16,11 +16,11 @@ import java.util.Optional;
 
 @ApplicationScoped
 public class PanacheSourceFileRepository
-        implements SourceFileRepository, PanacheRepositoryBase<SourceFile, FileIdentifier> {
+        implements SourceFileRepository, PanacheRepositoryBase<SourceFile, Long> {
 
     @Override
     public Optional<SourceFile> findByIdentifier(FileIdentifier identifier) {
-        return findByIdOptional(identifier);
+        return findByIdOptional(identifier.value());
     }
 
     @Override
@@ -46,7 +46,7 @@ public class PanacheSourceFileRepository
     @Override
     @Transactional
     public void updateContentSha(FileIdentifier identifier, ContentSha contentSha) {
-        findByIdOptional(identifier)
+        findByIdOptional(identifier.value())
                 .orElseThrow(() -> new IllegalArgumentException("SourceFile not found: " + identifier))
                 .setContentSha(contentSha);
     }
@@ -54,6 +54,6 @@ public class PanacheSourceFileRepository
     @Override
     @Transactional
     public void deleteByIdentifier(FileIdentifier identifier) {
-        deleteById(identifier);
+        deleteById(identifier.value());
     }
 }

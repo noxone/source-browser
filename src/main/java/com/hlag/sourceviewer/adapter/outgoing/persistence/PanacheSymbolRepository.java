@@ -15,11 +15,11 @@ import java.util.Optional;
 
 @ApplicationScoped
 public class PanacheSymbolRepository
-        implements SymbolRepository, PanacheRepositoryBase<Symbol, SymbolIdentifier> {
+        implements SymbolRepository, PanacheRepositoryBase<Symbol, Long> {
 
     @Override
     public Optional<Symbol> findByIdentifier(SymbolIdentifier identifier) {
-        return findByIdOptional(identifier);
+        return findByIdOptional(identifier.value());
     }
 
     @Override

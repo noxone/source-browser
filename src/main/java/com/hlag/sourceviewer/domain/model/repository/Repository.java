@@ -4,7 +4,6 @@ import com.hlag.sourceviewer.domain.model.converter.BranchNameConverter;
 import com.hlag.sourceviewer.domain.model.converter.CommitShaConverter;
 import com.hlag.sourceviewer.domain.model.converter.DisplayNameConverter;
 import com.hlag.sourceviewer.domain.model.converter.FilePathConverter;
-import com.hlag.sourceviewer.domain.model.converter.RepositoryIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.identifier.BranchName;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
@@ -28,8 +27,7 @@ public class Repository {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Convert(converter = RepositoryIdentifierConverter.class)
-    private RepositoryIdentifier identifier;
+    private Long id;
 
     @Column(name = "name", nullable = false, unique = true)
     @Convert(converter = DisplayNameConverter.class)
@@ -57,14 +55,12 @@ public class Repository {
     protected Repository() {}
 
     public Repository(
-            RepositoryIdentifier identifier,
             DisplayName name,
             Optional<FilePath> remoteUrl,
             FilePath localPath,
             BranchName defaultBranch,
             Optional<Instant> lastScannedAt,
             Optional<CommitSha> lastCommitSha) {
-        this.identifier = identifier;
         this.name = name;
         this.remoteUrl = remoteUrl.orElse(null);
         this.localPath = localPath;
@@ -73,7 +69,7 @@ public class Repository {
         this.lastCommitSha = lastCommitSha.orElse(null);
     }
 
-    public RepositoryIdentifier identifier() { return identifier; }
+    public RepositoryIdentifier identifier() { return id != null ? new RepositoryIdentifier(id) : null; }
     public DisplayName name() { return name; }
     public Optional<FilePath> remoteUrl() { return Optional.ofNullable(remoteUrl); }
     public FilePath localPath() { return localPath; }

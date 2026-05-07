@@ -3,7 +3,6 @@ package com.hlag.sourceviewer.domain.model.source;
 import com.hlag.sourceviewer.domain.model.converter.ColumnNumberConverter;
 import com.hlag.sourceviewer.domain.model.converter.FileIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.converter.LineNumberConverter;
-import com.hlag.sourceviewer.domain.model.converter.ReferenceIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.converter.SimpleNameConverter;
 import com.hlag.sourceviewer.domain.model.converter.SymbolIdentifierConverter;
 import com.hlag.sourceviewer.domain.model.identifier.ColumnNumber;
@@ -32,8 +31,7 @@ public class SymbolReference {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Convert(converter = ReferenceIdentifierConverter.class)
-    private ReferenceIdentifier identifier;
+    private Long id;
 
     @Column(name = "file_id", nullable = false)
     @Convert(converter = FileIdentifierConverter.class)
@@ -62,14 +60,12 @@ public class SymbolReference {
     protected SymbolReference() {}
 
     public SymbolReference(
-            ReferenceIdentifier identifier,
             FileIdentifier fileIdentifier,
             Optional<SymbolIdentifier> symbolIdentifier,
             Optional<SimpleName> unresolvedName,
             ReferenceKind kind,
             Optional<LineNumber> line,
             Optional<ColumnNumber> columnStart) {
-        this.identifier = identifier;
         this.fileIdentifier = fileIdentifier;
         this.symbolIdentifier = symbolIdentifier.orElse(null);
         this.unresolvedName = unresolvedName.orElse(null);
@@ -78,7 +74,7 @@ public class SymbolReference {
         this.columnStart = columnStart.orElse(null);
     }
 
-    public ReferenceIdentifier identifier() { return identifier; }
+    public ReferenceIdentifier identifier() { return id != null ? new ReferenceIdentifier(id) : null; }
     public FileIdentifier fileIdentifier() { return fileIdentifier; }
     public Optional<SymbolIdentifier> symbolIdentifier() { return Optional.ofNullable(symbolIdentifier); }
     public Optional<SimpleName> unresolvedName() { return Optional.ofNullable(unresolvedName); }
