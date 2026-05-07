@@ -118,6 +118,14 @@
             <version>${mapstruct.version}</version>
         </dependency>
 
+        <!-- ── Annotation processors (compile-time only) ────────────── -->
+        <dependency>
+            <groupId>org.mapstruct</groupId>
+            <artifactId>mapstruct-processor</artifactId>
+            <version>${mapstruct.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
         <!-- ── Tests ─────────────────────────────────────────────────── -->
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -188,21 +196,67 @@
                 </executions>
             </plugin>
 
-            <!-- ── Compiler (with MapStruct processor) ────────────────── -->
+            <!--
+                Resolve dependency JAR paths into Maven properties so that the
+                compiler plugin can reference them in a -processorpath argument.
+                Property name pattern: ${groupId:artifactId:type}
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>resolve-processor-paths</id>
+                        <phase>initialize</phase>
+                        <goals><goal>properties</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- ── Compiler ───────────────────────────────────────────── -->
+            <!--
+                Two-phase compilation to bootstrap the in-tree APT processor:
+                1. generate-sources: compile only the processor package (no APT),
+                   output → target/processor-classes
+                2. compile: compile app sources (excluding the processor),
+                   passing an explicit -processorpath that covers both
+                   target/processor-classes and mapstruct-processor.jar
+            -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${compiler.plugin.version}</version>
-                <configuration>
-                    <release>21</release>
-                    <annotationProcessorPaths>
-                        <path>
-                            <groupId>org.mapstruct</groupId>
-                            <artifactId>mapstruct-processor</artifactId>
-                            <version>${mapstruct.version}</version>
-                        </path>
-                    </annotationProcessorPaths>
-                </configuration>
+                <executions>
+                    <execution>
+                        <id>compile-processor</id>
+                        <phase>generate-sources</phase>
+                        <goals><goal>compile</goal></goals>
+                        <configuration>
+                            <proc>none</proc>
+                            <outputDirectory>${project.build.directory}/processor-classes</outputDirectory>
+                            <includes>
+                                <include>com/hlag/sourceviewer/processor/**</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>default-compile</id>
+                        <phase>compile</phase>
+                        <goals><goal>compile</goal></goals>
+                        <configuration>
+                            <release>21</release>
+                            <excludes>
+                                <exclude>com/hlag/sourceviewer/processor/**</exclude>
+                            </excludes>
+                            <compilerArgs>
+                                <arg>-processorpath</arg>
+                                <arg>${project.build.directory}/processor-classes${path.separator}${org.mapstruct:mapstruct-processor:jar}</arg>
+                                <arg>-processor</arg>
+                                <arg>org.mapstruct.ap.MappingProcessor,com.hlag.sourceviewer.processor.ValueObjectConverterProcessor</arg>
+                            </compilerArgs>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <!-- ── Surefire ───────────────────────────────────────────── -->

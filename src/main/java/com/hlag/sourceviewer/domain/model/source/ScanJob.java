@@ -1,16 +1,11 @@
 package com.hlag.sourceviewer.domain.model.source;
 
-import com.hlag.sourceviewer.domain.model.converter.CommitShaConverter;
-import com.hlag.sourceviewer.domain.model.converter.ErrorMessageConverter;
-import com.hlag.sourceviewer.domain.model.converter.RepositoryIdentifierConverter;
-import com.hlag.sourceviewer.domain.model.converter.TokenCountConverter;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.ErrorMessage;
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.TokenCount;
 import jakarta.persistence.Column;
-import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -32,7 +27,6 @@ public class ScanJob {
     private Long id;
 
     @Column(name = "repository_id", nullable = false)
-    @Convert(converter = RepositoryIdentifierConverter.class)
     private RepositoryIdentifier repositoryIdentifier;
 
     @Enumerated(EnumType.STRING)
@@ -40,7 +34,6 @@ public class ScanJob {
     private TriggerType triggerType;
 
     @Column(name = "commit_sha")
-    @Convert(converter = CommitShaConverter.class)
     private CommitSha commitSha;
 
     @Enumerated(EnumType.STRING)
@@ -57,11 +50,9 @@ public class ScanJob {
     private Instant finishedAt;
 
     @Column(name = "files_scanned", nullable = false)
-    @Convert(converter = TokenCountConverter.class)
     private TokenCount filesScanned;
 
     @Column(name = "error_message")
-    @Convert(converter = ErrorMessageConverter.class)
     private ErrorMessage errorMessage;
 
     protected ScanJob() {}
