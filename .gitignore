@@ -1,4 +1,5 @@
 .idea/
+frontend/package-lock.json
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/maven,macos,windows,eclipse,intellij,visualstudiocode
