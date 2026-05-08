@@ -11,6 +11,7 @@ import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.port.incoming.ManageRepositoriesUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageRepositoriesUseCase.CreateRepositoryCommand;
 import com.hlag.sourceviewer.domain.port.incoming.ManageRepositoriesUseCase.UpdateRepositoryCommand;
+import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -36,6 +37,7 @@ import java.util.Optional;
 @Path("/api/repositories")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@Authenticated
 public class RepositoryResource {
 
     private static final Logger logger = LoggerFactory.getLogger(RepositoryResource.class);

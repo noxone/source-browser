@@ -30,8 +30,6 @@ and understand source code structures.
 
 ### Non-Goals (explicitly excluded)
 - Code editing or refactoring in the user interface
-- Own authentication/authorization in the first release
-  (handled by an upstream reverse proxy)
 - Languages other than Java in the first release
 - Build/CI integration
 
@@ -53,12 +51,15 @@ and understand source code structures.
 | Templates | Qute (`quarkus-qute`) | — |
 | Scheduling | `quarkus-scheduler` | — |
 | Health/Metrics | `quarkus-smallrye-health`, `quarkus-micrometer` | — |
+| **Authentication** | **`quarkus-oidc` (bearer/service mode)** | **—** |
+| **Identity provider (dev)** | **Keycloak 26.2** | **—** |
 | Java parser | JavaParser (`javaparser-symbol-solver-core`) | 3.26+ |
 | Git access | JGit (`org.eclipse.jgit`) | 6.10+ |
 | Architecture tests | ArchUnit | 1.4+ |
 | Test framework | JUnit 5, AssertJ, Testcontainers | — |
 | Mapping | MapStruct (when needed) | 1.6+ |
 | APT (code generation) | `ValueObjectConverterProcessor` (in-tree) | — |
+| **Frontend OIDC client** | **`oidc-client-ts`** | **3.1+** |
 
 ### Rationale for Key Decisions
 - **Quarkus instead of Spring Boot**: low memory footprint, fast startup time,
@@ -70,6 +71,20 @@ and understand source code structures.
 - **PostgreSQL instead of SQLite**: concurrent read/write access
   (scanner + multiple developers), built-in full-text search
   (`tsvector`/`tsquery`), scalability across repositories.
+- **`quarkus-oidc` in bearer/service mode**: the backend validates JWTs on every
+  API request without driving the login flow itself. The frontend SPA (via
+  `oidc-client-ts`) performs the PKCE authorization code flow. This separation
+  allows any OIDC-compliant provider (Keycloak, Microsoft Entra ID, Okta, …) to
+  be used with only environment variable changes.
+- **`oidc-client-ts` instead of `keycloak-js`**: provider-neutral OIDC library
+  that works identically with Keycloak, Entra ID, and any standards-compliant IdP.
+  `keycloak-js` is Keycloak-specific and would require code changes when switching
+  providers.
+- **Personal Access Tokens with `svt_` prefix**: opaque PATs stored as SHA-256
+  hashes in the database allow headless/CI access alongside interactive OIDC
+  sessions. The `svt_` prefix lets the custom `PersonalAccessTokenAuthMechanism`
+  distinguish PATs from JWTs in the `Authorization: Bearer` header without
+  ambiguity, so both mechanisms coexist transparently.
 
 ---
 
@@ -112,7 +127,42 @@ layer for jOOQ-generated code.
 **Dependency direction:** Arrows always point inward. The Domain knows
 nothing about the outer layers.
 
-### 3.2 Package Structure
+### 3.2 Security Architecture
+
+```
+Browser (oidc-client-ts)
+  ① PKCE redirect → Identity Provider (Keycloak / Entra ID)
+  ② Authorization code → token exchange (in browser)
+  ③ Bearer JWT on every request → Quarkus (/api/*)
+       quarkus-oidc validates JWT via JWKS from IdP
+
+CI / headless tools
+  ④ Bearer svt_<opaque-token> → Quarkus (/api/*)
+       PersonalAccessTokenAuthMechanism hashes token,
+       looks up SHA-256 digest in personal_access_token table
+```
+
+**Auth mechanisms (both active simultaneously):**
+
+| Mechanism | Trigger | Lives in |
+|---|---|---|
+| `quarkus-oidc` BearerTokenAuthentication | Bearer token NOT starting with `svt_` | Quarkus OIDC extension |
+| `PersonalAccessTokenAuthMechanism` | Bearer token starting with `svt_` | `infrastructure.security` |
+
+The custom mechanism is registered as `@Alternative @Priority(1)` so it runs first.
+If the token does not start with `svt_`, it returns an empty result and OIDC takes over.
+
+**Security annotations used in incoming adapters:**
+- `@Authenticated` (from `io.quarkus.security`) on resource classes — all endpoints in the
+  class require a valid identity regardless of mechanism.
+- `@Context SecurityIdentity` injection in method parameters — provides the current
+  principal's username for owner-scoped operations (e.g. PAT management).
+
+**ArchUnit rule:** `io.quarkus.security..` and `jakarta.annotation.security..` annotations are
+permitted in `adapter.incoming..` (on resource classes) and `infrastructure.security..`
+(auth mechanism and identity provider). They must not appear in `domain..` or `application..`.
+
+### 3.3 Package Structure
 
 The root package of the project is **`com.hlag.sourceviewer`**.
 
@@ -127,6 +177,7 @@ com.hlag.sourceviewer
 │   │   │                              time; no hand-written files here
 │   │   ├── source                   ← ParsedFile, SourceToken, ElementInfo
 │   │   ├── repository               ← Repository, BranchName, CommitSha
+│   │   ├── token                    ← PersonalAccessToken entity
 │   │   └── search                   ← SearchQuery, SearchResult
 │   ├── service                      ← Domain services (pure logic)
 │   └── port
@@ -150,10 +201,13 @@ com.hlag.sourceviewer
 │       ├── git
 │       └── jackson                  ← Jackson module for wrapper serialization
 │
-├── infrastructure                   ← Configuration, Scheduler, Health
+├── infrastructure                   ← Configuration, Scheduler, Health, Security
 │   ├── configuration
 │   ├── scheduler
-│   └── health
+│   ├── health
+│   └── security                     ← Custom HTTP auth mechanisms and identity providers
+│                                      (PersonalAccessTokenAuthMechanism,
+│                                       PersonalAccessTokenIdentityProvider)
 │
 └── processor                        ← COMPILE-TIME ONLY — APT processor that
                                        generates the JPA converters above;
@@ -220,6 +274,12 @@ Certain frameworks may only appear in designated packages:
   only in `adapter.incoming..`
 - **Qute** (`io.quarkus.qute..`):
   only in `adapter.incoming.view..`
+- **Quarkus Security** (`io.quarkus.security..`) and **Jakarta Security**
+  (`jakarta.annotation.security..`):
+  annotations such as `@Authenticated` and `@RolesAllowed` may only appear in
+  `adapter.incoming..` (on REST resource classes) and `infrastructure.security..`
+  (custom `HttpAuthenticationMechanism` and `IdentityProvider` implementations).
+  They must not appear in `domain..` or `application..`.
 - **JavaParser** (`com.github.javaparser..`):
   only in `domain..` and `application..`
 - **Jackson annotations / modules** (`com.fasterxml.jackson..`):
@@ -550,8 +610,11 @@ When this project is further developed with the help of an AI assistant:
 
 Points not yet decided, to be resolved during the project:
 
-- **Authentication/Authorization**: initially via upstream proxy
-  (e.g. OAuth2 Proxy). Later integration open.
+- **Authentication/Authorization**: implemented via OIDC (Keycloak in dev,
+  swappable via env vars). All `/api/*` endpoints require a valid Bearer JWT or PAT.
+  Personal Access Tokens (`svt_` prefix) are supported for headless/CI access.
+  Open items: role-based access control (RBAC) beyond simple `@Authenticated`;
+  frontend UI for managing personal access tokens.
 - **Multi-branch support**: currently the default branch is primarily
   indexed. Multi-branch support to follow.
 - **Cross-repository symbol resolution**: if repository A uses a class from

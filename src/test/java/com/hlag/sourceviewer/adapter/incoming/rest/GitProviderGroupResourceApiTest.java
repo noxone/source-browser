@@ -10,6 +10,7 @@ import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
 import io.quarkus.test.junit.QuarkusTestProfile;
+import io.quarkus.test.security.TestSecurity;
 import io.restassured.http.ContentType;
 import org.junit.jupiter.api.Test;
 
@@ -32,6 +33,7 @@ import static org.mockito.Mockito.*;
  */
 @QuarkusTest
 @TestProfile(GitProviderGroupResourceApiTest.NoDatabaseProfile.class)
+@TestSecurity(user = "testuser", roles = {"user"})
 class GitProviderGroupResourceApiTest {
 
     /** Test profile that disables all database-related infrastructure. */
