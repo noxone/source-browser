@@ -1,11 +1,15 @@
 <template>
   <RouterLink
     :to="to"
-    :title="title"
-    class="flex items-center justify-center w-10 h-10 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+    :title="expanded ? undefined : label"
+    class="flex items-center gap-3 w-full h-10 px-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
     :class="{ 'text-white bg-gray-700': isActive }"
   >
-    <slot />
+    <slot name="icon" />
+    <span
+      v-if="expanded"
+      class="text-sm whitespace-nowrap overflow-hidden"
+    >{{ label }}</span>
   </RouterLink>
 </template>
 
@@ -16,7 +20,8 @@ import type { RouteLocationRaw } from 'vue-router'
 
 const props = defineProps<{
   to: RouteLocationRaw
-  title: string
+  label: string
+  expanded: boolean
 }>()
 
 const route = useRoute()
