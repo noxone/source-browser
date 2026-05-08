@@ -1,0 +1,52 @@
+package com.hlag.sourceviewer.domain.port.outgoing;
+
+import com.hlag.sourceviewer.domain.model.identifier.PrincipalName;
+import com.hlag.sourceviewer.domain.model.identifier.UserAccountIdentifier;
+import com.hlag.sourceviewer.domain.model.user.UserAccount;
+
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Persistence port for user accounts.
+ */
+public interface UserAccountStore {
+
+    /**
+     * Returns the account with the given principal name, if it exists.
+     *
+     * @param principalName the principal name to look up
+     * @return the matching account, or empty
+     */
+    Optional<UserAccount> findByPrincipalName(PrincipalName principalName);
+
+    /**
+     * Returns the account with the given identifier, if it exists.
+     *
+     * @param identifier the identifier to look up
+     * @return the matching account, or empty
+     */
+    Optional<UserAccount> findById(UserAccountIdentifier identifier);
+
+    /**
+     * Returns all accounts ordered by creation date ascending.
+     *
+     * @return list of all accounts, never null
+     */
+    List<UserAccount> findAll();
+
+    /**
+     * Returns the total number of accounts stored.
+     *
+     * @return the account count
+     */
+    long countAll();
+
+    /**
+     * Persists a new account and returns its assigned identifier.
+     *
+     * @param userAccount the account to persist
+     * @return the generated identifier
+     */
+    UserAccountIdentifier insert(UserAccount userAccount);
+}

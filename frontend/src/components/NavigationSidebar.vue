@@ -37,7 +37,7 @@
 
     <!-- Bottom actions -->
     <div class="flex flex-col gap-1 pb-2 border-t border-gray-700 pt-2 px-2">
-      <NavButton :to="{ name: 'admin' }" label="Admin" :expanded="expanded">
+      <NavButton v-if="isAdmin" :to="{ name: 'admin' }" label="Admin" :expanded="expanded">
         <template #icon>
           <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round"
@@ -62,6 +62,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import NavButton from './NavButton.vue'
+import { useCurrentUserAccount } from '../composables/useCurrentUserAccount'
 
 const expanded = ref(false)
+const { isAdmin } = useCurrentUserAccount()
 </script>

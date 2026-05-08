@@ -33,7 +33,7 @@ import static org.mockito.Mockito.*;
  */
 @QuarkusTest
 @TestProfile(GitProviderGroupResourceApiTest.NoDatabaseProfile.class)
-@TestSecurity(user = "testuser", roles = {"user"})
+@TestSecurity(user = "testuser", roles = {"admin"})
 class GitProviderGroupResourceApiTest {
 
     /** Test profile that disables all database-related infrastructure. */

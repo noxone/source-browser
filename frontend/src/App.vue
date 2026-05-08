@@ -8,6 +8,10 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import NavigationSidebar from './components/NavigationSidebar.vue'
+import { fetchCurrentUserAccount } from './composables/useCurrentUserAccount'
+
+onMounted(() => fetchCurrentUserAccount())
 </script>

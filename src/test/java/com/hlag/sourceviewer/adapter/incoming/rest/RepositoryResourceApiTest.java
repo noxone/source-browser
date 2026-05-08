@@ -38,7 +38,7 @@ import static org.mockito.Mockito.*;
  */
 @QuarkusTest
 @TestProfile(RepositoryResourceApiTest.NoDatabaseProfile.class)
-@TestSecurity(user = "testuser", roles = {"user"})
+@TestSecurity(user = "testuser", roles = {"admin"})
 class RepositoryResourceApiTest {
 
     /** Test profile that disables all database-related infrastructure. */

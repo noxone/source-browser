@@ -257,6 +257,83 @@
       </div>
     </div>
 
+    <!-- ── Users ────────────────────────────────────────────────────────────────── -->
+    <div class="flex items-center justify-between mt-12 mb-6">
+      <div>
+        <h2 class="text-xl font-semibold text-gray-900">Users</h2>
+        <p class="mt-1 text-sm text-gray-500">
+          All provisioned users. The first user to log in is automatically made an administrator.
+        </p>
+      </div>
+    </div>
+
+    <!-- Users loading -->
+    <div v-if="usersLoading" class="flex items-center justify-center py-16 text-gray-400">
+      <svg class="animate-spin w-6 h-6 mr-3" fill="none" viewBox="0 0 24 24">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+      </svg>
+      Loading users…
+    </div>
+
+    <!-- Users error -->
+    <div v-else-if="usersLoadError" class="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
+      <p class="font-semibold">Failed to load users</p>
+      <p class="mt-1">{{ usersLoadError }}</p>
+      <button @click="fetchUsers" class="mt-3 underline hover:no-underline">Try again</button>
+    </div>
+
+    <!-- Users table -->
+    <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Username</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">First Login</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr v-for="userAccount in users" :key="userAccount.id" class="hover:bg-gray-50 transition-colors">
+            <td class="px-6 py-4">
+              <span class="font-medium text-gray-900 text-sm">{{ userAccount.principalName }}</span>
+            </td>
+            <td class="px-6 py-4 text-sm text-gray-500">{{ formatDate(userAccount.createdAt) }}</td>
+            <td class="px-6 py-4">
+              <span
+                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                :class="userAccount.admin
+                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                  : 'bg-gray-50 text-gray-500 border border-gray-200'"
+              >
+                {{ userAccount.admin ? 'Admin' : 'User' }}
+              </span>
+            </td>
+            <td class="px-6 py-4 text-right">
+              <button
+                v-if="userAccount.admin"
+                @click="setAdminStatus(userAccount, false)"
+                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Revoke Admin
+              </button>
+              <button
+                v-else
+                @click="setAdminStatus(userAccount, true)"
+                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+              >
+                Make Admin
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+        {{ users.length }} {{ users.length === 1 ? 'user' : 'users' }}
+      </div>
+    </div>
+
     <!-- Modals -->
     <RepositoryFormModal
       v-if="showRepoFormModal"
@@ -285,8 +362,10 @@
 import { ref, onMounted } from 'vue'
 import type { Repository } from '../types/repository'
 import type { GitProviderGroup } from '../types/git-provider-group'
+import type { UserAccount } from '../types/user-account'
 import { listRepositories } from '../api/repositories'
 import { listGitProviderGroups, deleteGitProviderGroup } from '../api/git-provider-groups'
+import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
 import RepositoryFormModal from '../components/RepositoryFormModal.vue'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.vue'
 import GitProviderGroupFormModal from '../components/GitProviderGroupFormModal.vue'
@@ -315,6 +394,7 @@ const editingGroup = ref<GitProviderGroup | undefined>(undefined)
 onMounted(() => {
   fetchRepositories()
   fetchGroups()
+  fetchUsers()
 })
 
 async function fetchRepositories() {
@@ -413,6 +493,36 @@ async function deleteGroup(group: GitProviderGroup) {
     groups.value = groups.value.filter(g => g.id !== group.id)
   } catch (error) {
     alert(error instanceof Error ? error.message : 'Failed to delete group')
+  }
+}
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+const users = ref<UserAccount[]>([])
+const usersLoading = ref(false)
+const usersLoadError = ref('')
+
+async function fetchUsers() {
+  usersLoading.value = true
+  usersLoadError.value = ''
+  try {
+    users.value = await listUserAccounts()
+  } catch (error) {
+    usersLoadError.value = error instanceof Error ? error.message : 'Unknown error'
+  } finally {
+    usersLoading.value = false
+  }
+}
+
+async function setAdminStatus(userAccount: UserAccount, admin: boolean) {
+  try {
+    const updated = await updateUserAccount(userAccount.id, { admin })
+    const index = users.value.findIndex(u => u.id === updated.id)
+    if (index >= 0) {
+      users.value[index] = updated
+    }
+  } catch (error) {
+    alert(error instanceof Error ? error.message : 'Failed to update user')
   }
 }
 

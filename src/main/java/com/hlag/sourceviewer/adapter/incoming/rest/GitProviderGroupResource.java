@@ -27,6 +27,7 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.UriInfo;
 import io.quarkus.security.Authenticated;
+import jakarta.annotation.security.RolesAllowed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +39,7 @@ import java.util.Optional;
 /**
  * REST resource for managing Git provider group configurations.
  */
-@Authenticated
+@RolesAllowed("admin")
 @Path("/api/git-provider-groups")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
