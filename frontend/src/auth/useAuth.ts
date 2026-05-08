@@ -1,8 +1,8 @@
-import { ref, readonly } from 'vue'
+import { ref, shallowRef, readonly } from 'vue'
 import type { UserManager, User } from 'oidc-client-ts'
 import { createUserManager } from './oidcConfig'
 
-const currentUser = ref<User | null>(null)
+const currentUser = shallowRef<User | null>(null)
 const isLoading = ref(true)
 let userManager: UserManager | null = null
 
