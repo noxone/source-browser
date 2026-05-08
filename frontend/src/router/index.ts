@@ -1,5 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import RepositoryListView from '../views/RepositoryListView.vue'
+import SearchView from '../views/SearchView.vue'
+import AdminView from '../views/AdminView.vue'
+import UserSettingsView from '../views/UserSettingsView.vue'
 import { useAuth } from '../auth/useAuth'
 
 const router = createRouter({
@@ -7,8 +9,24 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      name: 'repositories',
-      component: RepositoryListView,
+      redirect: { name: 'search' }
+    },
+    {
+      path: '/search',
+      name: 'search',
+      component: SearchView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/admin',
+      name: 'admin',
+      component: AdminView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: UserSettingsView,
       meta: { requiresAuth: true }
     }
   ]
