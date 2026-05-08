@@ -118,6 +118,20 @@
                   </svg>
                   Delete
                 </button>
+                <button
+                  @click="openCredentialModal('repository', repo.id, repo.name)"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-lg border"
+                  :class="repoCredentials[repo.id]
+                    ? 'text-amber-700 bg-white border-amber-200 hover:bg-amber-50'
+                    : 'text-gray-600 bg-white border-gray-300 hover:bg-gray-50'"
+                  :title="repoCredentials[repo.id] ? 'Credential configured — click to update' : 'No credential — click to configure'"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                  </svg>
+                  {{ repoCredentials[repo.id] ? 'Credential ✓' : 'Credential' }}
+                </button>
               </div>
             </td>
           </tr>
@@ -247,6 +261,20 @@
                   </svg>
                   Delete
                 </button>
+                <button
+                  @click="openCredentialModal('group', group.id, group.name)"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-lg border"
+                  :class="groupCredentials[group.id]
+                    ? 'text-amber-700 bg-white border-amber-200 hover:bg-amber-50'
+                    : 'text-gray-600 bg-white border-gray-300 hover:bg-gray-50'"
+                  :title="groupCredentials[group.id] ? 'Credential configured — click to update' : 'No credential — click to configure'"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                  </svg>
+                  {{ groupCredentials[group.id] ? 'Credential ✓' : 'Credential' }}
+                </button>
               </div>
             </td>
           </tr>
@@ -355,6 +383,16 @@
       @close="closeGroupFormModal"
       @saved="handleGroupSaved"
     />
+
+    <CredentialFormModal
+      v-if="showCredentialModal"
+      :entity-type="credentialEntityType"
+      :entity-id="credentialEntityId"
+      :entity-name="credentialEntityName"
+      @close="closeCredentialModal"
+      @saved="handleCredentialSaved"
+      @removed="handleCredentialRemoved"
+    />
   </div>
 </template>
 
@@ -362,13 +400,16 @@
 import { ref, onMounted } from 'vue'
 import type { Repository } from '../types/repository'
 import type { GitProviderGroup } from '../types/git-provider-group'
+import type { GitCredential } from '../types/git-credential'
 import type { UserAccount } from '../types/user-account'
 import { listRepositories } from '../api/repositories'
 import { listGitProviderGroups, deleteGitProviderGroup } from '../api/git-provider-groups'
+import { getRepositoryCredential, getGroupCredential } from '../api/git-credentials'
 import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
 import RepositoryFormModal from '../components/RepositoryFormModal.vue'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.vue'
 import GitProviderGroupFormModal from '../components/GitProviderGroupFormModal.vue'
+import CredentialFormModal from '../components/CredentialFormModal.vue'
 
 // ── Repositories ──────────────────────────────────────────────────────────────
 
@@ -391,6 +432,16 @@ const groupsLoadError = ref('')
 const showGroupFormModal = ref(false)
 const editingGroup = ref<GitProviderGroup | undefined>(undefined)
 
+// ── Credentials ───────────────────────────────────────────────────────────────
+
+const repoCredentials = ref<Record<number, GitCredential | null>>({})
+const groupCredentials = ref<Record<number, GitCredential | null>>({})
+
+const showCredentialModal = ref(false)
+const credentialEntityType = ref<'repository' | 'group'>('repository')
+const credentialEntityId = ref(0)
+const credentialEntityName = ref('')
+
 onMounted(() => {
   fetchRepositories()
   fetchGroups()
@@ -402,6 +453,7 @@ async function fetchRepositories() {
   reposLoadError.value = ''
   try {
     repositories.value = await listRepositories()
+    loadRepoCredentials()
   } catch (error) {
     reposLoadError.value = error instanceof Error ? error.message : 'Unknown error'
   } finally {
@@ -414,11 +466,57 @@ async function fetchGroups() {
   groupsLoadError.value = ''
   try {
     groups.value = await listGitProviderGroups()
+    loadGroupCredentials()
   } catch (error) {
     groupsLoadError.value = error instanceof Error ? error.message : 'Unknown error'
   } finally {
     groupsLoading.value = false
   }
+}
+
+function loadRepoCredentials() {
+  repositories.value.forEach(repo => {
+    getRepositoryCredential(repo.id)
+      .then(credential => { repoCredentials.value[repo.id] = credential })
+      .catch(() => { repoCredentials.value[repo.id] = null })
+  })
+}
+
+function loadGroupCredentials() {
+  groups.value.forEach(group => {
+    getGroupCredential(group.id)
+      .then(credential => { groupCredentials.value[group.id] = credential })
+      .catch(() => { groupCredentials.value[group.id] = null })
+  })
+}
+
+function openCredentialModal(entityType: 'repository' | 'group', id: number, name: string) {
+  credentialEntityType.value = entityType
+  credentialEntityId.value = id
+  credentialEntityName.value = name
+  showCredentialModal.value = true
+}
+
+function closeCredentialModal() {
+  showCredentialModal.value = false
+}
+
+function handleCredentialSaved(credential: GitCredential) {
+  if (credentialEntityType.value === 'repository') {
+    repoCredentials.value[credentialEntityId.value] = credential
+  } else {
+    groupCredentials.value[credentialEntityId.value] = credential
+  }
+  closeCredentialModal()
+}
+
+function handleCredentialRemoved() {
+  if (credentialEntityType.value === 'repository') {
+    repoCredentials.value[credentialEntityId.value] = null
+  } else {
+    groupCredentials.value[credentialEntityId.value] = null
+  }
+  closeCredentialModal()
 }
 
 function openAddRepoModal() {

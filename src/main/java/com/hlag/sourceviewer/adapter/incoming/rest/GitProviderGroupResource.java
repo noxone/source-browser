@@ -1,14 +1,21 @@
 package com.hlag.sourceviewer.adapter.incoming.rest;
 
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.CreateGitProviderGroupDto;
+import com.hlag.sourceviewer.adapter.incoming.rest.dto.GitCredentialDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.GitProviderGroupDto;
+import com.hlag.sourceviewer.adapter.incoming.rest.dto.SetGitCredentialDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.UpdateGitProviderGroupDto;
+import com.hlag.sourceviewer.domain.model.identifier.CredentialDescription;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.GitProviderGroupIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.GitProviderType;
 import com.hlag.sourceviewer.domain.model.identifier.GroupPath;
+import com.hlag.sourceviewer.domain.model.identifier.SecretValue;
+import com.hlag.sourceviewer.domain.model.repository.GitCredential;
 import com.hlag.sourceviewer.domain.model.repository.GitProviderGroup;
+import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase;
+import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase.SetCredentialCommand;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase.CreateGitProviderGroupCommand;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase.UpdateGitProviderGroupCommand;
@@ -48,10 +55,14 @@ public class GitProviderGroupResource {
     private static final Logger logger = LoggerFactory.getLogger(GitProviderGroupResource.class);
 
     private final ManageGitProviderGroupsUseCase manageGitProviderGroupsUseCase;
+    private final ManageGitCredentialsUseCase manageGitCredentialsUseCase;
 
     @Inject
-    public GitProviderGroupResource(ManageGitProviderGroupsUseCase manageGitProviderGroupsUseCase) {
+    public GitProviderGroupResource(
+            ManageGitProviderGroupsUseCase manageGitProviderGroupsUseCase,
+            ManageGitCredentialsUseCase manageGitCredentialsUseCase) {
         this.manageGitProviderGroupsUseCase = manageGitProviderGroupsUseCase;
+        this.manageGitCredentialsUseCase = manageGitCredentialsUseCase;
     }
 
     /**
@@ -153,6 +164,57 @@ public class GitProviderGroupResource {
         return Response.noContent().build();
     }
 
+    /**
+     * Returns the credential metadata for the given Git provider group.
+     * The secret itself is never included in the response.
+     *
+     * @param id the group identifier
+     * @return the credential metadata
+     * @throws NotFoundException if the group has no credential configured
+     */
+    @GET
+    @Path("/{id}/credential")
+    public GitCredentialDto getGroupCredential(@PathParam("id") Long id) {
+        return manageGitCredentialsUseCase.findCredentialForGroup(new GitProviderGroupIdentifier(id))
+                .map(this::toCredentialDto)
+                .orElseThrow(() -> new NotFoundException("No credential configured for group: " + id));
+    }
+
+    /**
+     * Creates or replaces the credential for the given Git provider group.
+     * The plaintext secret is accepted in the request body and is encrypted before storage.
+     * The response never contains the plaintext or ciphertext.
+     *
+     * @param id      the group identifier
+     * @param request description and plaintext secret
+     * @return the persisted credential metadata
+     */
+    @PUT
+    @Path("/{id}/credential")
+    public GitCredentialDto setGroupCredential(@PathParam("id") Long id, SetGitCredentialDto request) {
+        logger.info("Setting credential for group {}", id);
+        var command = new SetCredentialCommand(
+                Optional.ofNullable(request.description()).filter(s -> !s.isBlank()).map(CredentialDescription::new),
+                new SecretValue(request.secret())
+        );
+        return toCredentialDto(
+                manageGitCredentialsUseCase.setCredentialForGroup(new GitProviderGroupIdentifier(id), command));
+    }
+
+    /**
+     * Removes the credential for the given Git provider group.
+     *
+     * @param id the group identifier
+     * @return 204 No Content
+     */
+    @DELETE
+    @Path("/{id}/credential")
+    public Response deleteGroupCredential(@PathParam("id") Long id) {
+        logger.info("Deleting credential for group {}", id);
+        manageGitCredentialsUseCase.removeCredentialForGroup(new GitProviderGroupIdentifier(id));
+        return Response.noContent().build();
+    }
+
     private GitProviderGroupDto toDto(GitProviderGroup group) {
         return new GitProviderGroupDto(
                 group.identifier().value(),
@@ -162,6 +224,14 @@ public class GitProviderGroupResource {
                 group.baseUrl().map(FilePath::value).orElse(null),
                 group.isArchivedOmitted(),
                 group.isForkedOmitted()
+        );
+    }
+
+    private GitCredentialDto toCredentialDto(GitCredential credential) {
+        return new GitCredentialDto(
+                credential.identifier().value(),
+                credential.description().map(CredentialDescription::value).orElse(null),
+                credential.updatedAt()
         );
     }
 }
