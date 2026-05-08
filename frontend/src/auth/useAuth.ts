@@ -23,7 +23,12 @@ export async function initAuth(): Promise<void> {
 
   userManager.events.addUserLoaded((user) => { currentUser.value = user })
   userManager.events.addUserUnloaded(() => { currentUser.value = null })
-  userManager.events.addSilentRenewError(() => { currentUser.value = null })
+  // When silent token renewal fails, clear the user and re-trigger login.
+  // setTimeout avoids calling signinRedirect() inside oidc-client-ts internals.
+  userManager.events.addSilentRenewError(() => {
+    currentUser.value = null
+    setTimeout(() => userManager!.signinRedirect().catch(() => {}), 0)
+  })
 
   try {
     // Detect OIDC callback: the authorization server adds ?code=...&state=... before the hash

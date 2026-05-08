@@ -14,13 +14,12 @@ const router = createRouter({
   ]
 })
 
-router.beforeEach(async (to) => {
-  if (to.meta.requiresAuth) {
-    const { isAuthenticated, login } = useAuth()
-    if (!isAuthenticated()) {
-      await login()
-      return false
-    }
+// Safety net for in-app session expiry: block protected navigation but
+// do NOT call login() here — that would cause router.go(-1) to re-fire
+// this guard in a loop before signinRedirect() has finished navigating away.
+router.beforeEach((to) => {
+  if (to.meta.requiresAuth && !useAuth().isAuthenticated()) {
+    return false
   }
 })
 
