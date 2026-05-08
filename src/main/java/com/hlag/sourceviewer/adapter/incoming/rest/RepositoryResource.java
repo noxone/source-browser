@@ -3,6 +3,7 @@ package com.hlag.sourceviewer.adapter.incoming.rest;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.CreateRepositoryDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.GitCredentialDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.RepositoryDto;
+import com.hlag.sourceviewer.adapter.incoming.rest.dto.ScanTriggerResponseDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.SetGitCredentialDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.UpdateRepositoryDto;
 import com.hlag.sourceviewer.domain.model.identifier.BranchName;
@@ -13,11 +14,13 @@ import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.SecretValue;
 import com.hlag.sourceviewer.domain.model.repository.GitCredential;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
+import com.hlag.sourceviewer.domain.model.source.ScanJob;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase.SetCredentialCommand;
 import com.hlag.sourceviewer.domain.port.incoming.ManageRepositoriesUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageRepositoriesUseCase.CreateRepositoryCommand;
 import com.hlag.sourceviewer.domain.port.incoming.ManageRepositoriesUseCase.UpdateRepositoryCommand;
+import com.hlag.sourceviewer.domain.port.incoming.ScanRepositoryUseCase;
 import io.quarkus.security.Authenticated;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -52,13 +55,16 @@ public class RepositoryResource {
 
     private final ManageRepositoriesUseCase manageRepositoriesUseCase;
     private final ManageGitCredentialsUseCase manageGitCredentialsUseCase;
+    private final ScanRepositoryUseCase scanRepositoryUseCase;
 
     @Inject
     public RepositoryResource(
             ManageRepositoriesUseCase manageRepositoriesUseCase,
-            ManageGitCredentialsUseCase manageGitCredentialsUseCase) {
+            ManageGitCredentialsUseCase manageGitCredentialsUseCase,
+            ScanRepositoryUseCase scanRepositoryUseCase) {
         this.manageRepositoriesUseCase = manageRepositoriesUseCase;
         this.manageGitCredentialsUseCase = manageGitCredentialsUseCase;
+        this.scanRepositoryUseCase = scanRepositoryUseCase;
     }
 
     @GET
@@ -170,6 +176,30 @@ public class RepositoryResource {
         logger.info("Deleting credential for repository {}", id);
         manageGitCredentialsUseCase.removeCredentialForRepository(new RepositoryIdentifier(id));
         return Response.noContent().build();
+    }
+
+    /**
+     * Enqueues a manual scan for the given repository.
+     *
+     * @param id the repository identifier
+     * @return 202 Accepted with the queued scan job identifier
+     * @throws NotFoundException if the repository does not exist
+     */
+    @POST
+    @Path("/{id}/scan")
+    public Response triggerRepositoryScan(@PathParam("id") Long id) {
+        logger.info("Manual scan triggered for repository {}", id);
+        manageRepositoriesUseCase.findRepository(new RepositoryIdentifier(id))
+                .orElseThrow(() -> new NotFoundException("Repository not found: " + id));
+        var command = new ScanRepositoryUseCase.ScanCommand(
+                new RepositoryIdentifier(id),
+                java.util.Optional.empty(),
+                ScanJob.TriggerType.MANUAL
+        );
+        var scanJob = scanRepositoryUseCase.enqueueScan(command);
+        return Response.accepted()
+                .entity(new ScanTriggerResponseDto(scanJob.identifier().value()))
+                .build();
     }
 
     private RepositoryDto toDto(Repository repository) {

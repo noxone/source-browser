@@ -132,6 +132,24 @@
                   </svg>
                   {{ repoCredentials[repo.id] ? 'Credential ✓' : 'Credential' }}
                 </button>
+                <button
+                  @click="triggerScan('repository', repo.id)"
+                  :disabled="isScanLoading('repository', repo.id)"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-lg border disabled:opacity-50"
+                  :class="isScanQueued('repository', repo.id)
+                    ? 'text-green-700 bg-white border-green-200 hover:bg-green-50'
+                    : 'text-indigo-700 bg-white border-indigo-200 hover:bg-indigo-50'"
+                  title="Enqueue a manual scan for this repository"
+                >
+                  <svg v-if="isScanLoading('repository', repo.id)" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                  </svg>
+                  <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  </svg>
+                  {{ isScanQueued('repository', repo.id) ? 'Queued ✓' : 'Scan' }}
+                </button>
               </div>
             </td>
           </tr>
@@ -275,6 +293,24 @@
                   </svg>
                   {{ groupCredentials[group.id] ? 'Credential ✓' : 'Credential' }}
                 </button>
+                <button
+                  @click="triggerScan('group', group.id)"
+                  :disabled="isScanLoading('group', group.id)"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-lg border disabled:opacity-50"
+                  :class="isScanQueued('group', group.id)
+                    ? 'text-green-700 bg-white border-green-200 hover:bg-green-50'
+                    : 'text-indigo-700 bg-white border-indigo-200 hover:bg-indigo-50'"
+                  title="Enqueue a discovery scan for this group"
+                >
+                  <svg v-if="isScanLoading('group', group.id)" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                  </svg>
+                  <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  </svg>
+                  {{ isScanQueued('group', group.id) ? 'Queued ✓' : 'Scan' }}
+                </button>
               </div>
             </td>
           </tr>
@@ -405,6 +441,8 @@ import type { UserAccount } from '../types/user-account'
 import { listRepositories } from '../api/repositories'
 import { listGitProviderGroups, deleteGitProviderGroup } from '../api/git-provider-groups'
 import { getRepositoryCredential, getGroupCredential } from '../api/git-credentials'
+import { triggerRepositoryScan } from '../api/repositories'
+import { triggerGroupScan } from '../api/git-provider-groups'
 import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
 import RepositoryFormModal from '../components/RepositoryFormModal.vue'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.vue'
@@ -441,6 +479,38 @@ const showCredentialModal = ref(false)
 const credentialEntityType = ref<'repository' | 'group'>('repository')
 const credentialEntityId = ref(0)
 const credentialEntityName = ref('')
+
+// ── Scan trigger ──────────────────────────────────────────────────────────────
+
+const scanLoading = ref<Record<string, boolean>>({})
+const scanQueued = ref<Record<string, boolean>>({})
+
+function isScanLoading(entityType: 'repository' | 'group', id: number): boolean {
+  return !!scanLoading.value[`${entityType}-${id}`]
+}
+
+function isScanQueued(entityType: 'repository' | 'group', id: number): boolean {
+  return !!scanQueued.value[`${entityType}-${id}`]
+}
+
+async function triggerScan(entityType: 'repository' | 'group', id: number) {
+  const key = `${entityType}-${id}`
+  scanLoading.value[key] = true
+  scanQueued.value[key] = false
+  try {
+    if (entityType === 'repository') {
+      await triggerRepositoryScan(id)
+    } else {
+      await triggerGroupScan(id)
+    }
+    scanQueued.value[key] = true
+    setTimeout(() => { scanQueued.value[key] = false }, 3000)
+  } catch (e) {
+    console.error('Scan trigger failed', e)
+  } finally {
+    scanLoading.value[key] = false
+  }
+}
 
 onMounted(() => {
   fetchRepositories()

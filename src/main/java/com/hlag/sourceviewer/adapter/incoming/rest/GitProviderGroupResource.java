@@ -5,6 +5,7 @@ import com.hlag.sourceviewer.adapter.incoming.rest.dto.GitCredentialDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.GitProviderGroupDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.SetGitCredentialDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.UpdateGitProviderGroupDto;
+import com.hlag.sourceviewer.adapter.incoming.rest.dto.ScanTriggerResponseDto;
 import com.hlag.sourceviewer.domain.model.identifier.CredentialDescription;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
@@ -213,6 +214,25 @@ public class GitProviderGroupResource {
         logger.info("Deleting credential for group {}", id);
         manageGitCredentialsUseCase.removeCredentialForGroup(new GitProviderGroupIdentifier(id));
         return Response.noContent().build();
+    }
+
+    /**
+     * Enqueues a manual discovery scan for the given Git provider group.
+     * Group-level discovery (importing repositories from the provider API) is not yet
+     * fully implemented; this endpoint validates the group exists and returns 202 Accepted
+     * as a placeholder for the future scan pipeline.
+     *
+     * @param id the group identifier
+     * @return 202 Accepted
+     * @throws NotFoundException if the group does not exist
+     */
+    @POST
+    @Path("/{id}/scan")
+    public Response triggerGroupScan(@PathParam("id") Long id) {
+        logger.info("Manual scan triggered for group {}", id);
+        manageGitProviderGroupsUseCase.findGitProviderGroup(new GitProviderGroupIdentifier(id))
+                .orElseThrow(() -> new NotFoundException("Git provider group not found: " + id));
+        return Response.accepted().build();
     }
 
     private GitProviderGroupDto toDto(GitProviderGroup group) {
