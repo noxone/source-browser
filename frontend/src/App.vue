@@ -7,6 +7,16 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h8M8 8h4"/>
         </svg>
         <h1 class="text-xl font-semibold text-gray-900">Java Source Viewer</h1>
+        <div class="ml-auto flex items-center gap-3">
+          <span v-if="user" class="text-sm text-gray-500">{{ user.profile.preferred_username }}</span>
+          <button
+            v-if="user"
+            @click="logout"
+            class="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </header>
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -17,4 +27,7 @@
 
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
+import { useAuth } from './auth/useAuth'
+
+const { user, logout } = useAuth()
 </script>

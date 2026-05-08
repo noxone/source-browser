@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import { resolve } from 'path'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
@@ -10,6 +11,12 @@ export default defineConfig({
   },
   build: {
     outDir: '../src/main/resources/META-INF/resources',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        silentRenew: resolve(__dirname, 'silent-renew.html')
+      }
+    }
   }
 })

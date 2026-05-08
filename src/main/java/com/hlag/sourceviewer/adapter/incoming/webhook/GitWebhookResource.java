@@ -6,6 +6,7 @@ import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
 import com.hlag.sourceviewer.domain.port.incoming.ScanRepositoryUseCase;
+import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -28,6 +29,7 @@ import java.util.Optional;
  * </p>
  */
 @Path("/api/webhook")
+@Authenticated
 public class GitWebhookResource {
 
     private static final Logger logger = LoggerFactory.getLogger(GitWebhookResource.class);
