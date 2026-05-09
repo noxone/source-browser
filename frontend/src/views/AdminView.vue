@@ -772,6 +772,76 @@
       </div>
 
     </div> <!-- end scan jobs tab -->
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         Tab: Settings
+         ════════════════════════════════════════════════════════════════════════ -->
+    <div v-show="activeTab === 'settings'">
+
+      <div class="mb-6">
+        <h2 class="text-xl font-semibold text-gray-900">Settings</h2>
+        <p class="mt-1 text-sm text-gray-500">
+          Runtime-configurable settings. Changes take effect immediately without restarting the application.
+        </p>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="settingsLoading" class="flex items-center justify-center py-16 text-gray-400">
+        <svg class="animate-spin w-6 h-6 mr-3" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+        Loading settings…
+      </div>
+
+      <!-- Error -->
+      <div v-else-if="settingsLoadError" class="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
+        <p class="font-semibold">Failed to load settings</p>
+        <p class="mt-1">{{ settingsLoadError }}</p>
+        <button @click="fetchSettings" class="mt-3 underline hover:no-underline">Try again</button>
+      </div>
+
+      <!-- Settings table -->
+      <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-64">Setting</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Value</th>
+              <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr v-for="setting in settings" :key="setting.key" class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4">
+                <span class="font-mono text-xs font-medium text-gray-700">{{ setting.key }}</span>
+              </td>
+              <td class="px-6 py-4 text-sm text-gray-500">{{ setting.description }}</td>
+              <td class="px-6 py-4">
+                <input
+                  :value="settingEditValue(setting.key)"
+                  @input="onSettingInput(setting.key, ($event.target as HTMLInputElement).value)"
+                  class="w-full px-3 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  :class="isSettingDirty(setting.key) ? 'border-amber-300 bg-amber-50' : 'border-gray-300'"
+                />
+              </td>
+              <td class="px-6 py-4 text-right">
+                <button
+                  @click="saveSettingValue(setting.key)"
+                  :disabled="!isSettingDirty(setting.key)"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Save
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div> <!-- end settings tab -->
+
     <RepositoryFormModal
       v-if="showRepoFormModal"
       :repository="editingRepository"
@@ -826,6 +896,7 @@ import type { GitCredential } from '../types/git-credential'
 import type { UserAccount, UserAccountPage } from '../types/user-account'
 import type { ServiceAccount } from '../types/service-account'
 import type { ScanJob } from '../types/scan-job'
+import type { AppSetting } from '../types/app-setting'
 import { listRepositories } from '../api/repositories'
 import { listGitProviderGroups, deleteGitProviderGroup } from '../api/git-provider-groups'
 import { getRepositoryCredential, getGroupCredential } from '../api/git-credentials'
@@ -834,6 +905,7 @@ import { triggerGroupScan } from '../api/git-provider-groups'
 import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
 import { listServiceAccounts, deleteServiceAccount } from '../api/service-accounts'
 import { listScanJobs, deleteScanJob, deleteAllQueuedScanJobs } from '../api/scan-jobs'
+import { listSettings, updateSetting } from '../api/settings'
 import RepositoryFormModal from '../components/RepositoryFormModal.vue'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.vue'
 import GitProviderGroupFormModal from '../components/GitProviderGroupFormModal.vue'
@@ -847,7 +919,8 @@ const tabs = [
   { id: 'repositories',    label: 'Repositories'    },
   { id: 'users',           label: 'Users'           },
   { id: 'serviceaccounts', label: 'Service Accounts' },
-  { id: 'scanjobs',        label: 'Scan Jobs'       }
+  { id: 'scanjobs',        label: 'Scan Jobs'       },
+  { id: 'settings',        label: 'Settings'        }
 ] as const
 
 type TabId = typeof tabs[number]['id']
@@ -1283,4 +1356,53 @@ const STATUS_CLASSES: Record<string, string> = {
 }
 
 const queuedScanJobCount = computed(() => scanJobs.value.filter(j => j.status === 'QUEUED').length)
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+const settings = ref<AppSetting[]>([])
+const settingsLoading = ref(false)
+const settingsLoadError = ref('')
+const settingsDirty = ref<Record<string, string>>({})
+
+watch(activeTab, (tab) => {
+  if (tab === 'settings') fetchSettings()
+})
+
+async function fetchSettings() {
+  settingsLoading.value = true
+  settingsLoadError.value = ''
+  try {
+    settings.value = await listSettings()
+    settingsDirty.value = {}
+  } catch (error) {
+    settingsLoadError.value = error instanceof Error ? error.message : 'Unknown error'
+  } finally {
+    settingsLoading.value = false
+  }
+}
+
+function settingEditValue(key: string): string {
+  return key in settingsDirty.value ? settingsDirty.value[key] : (settings.value.find(s => s.key === key)?.value ?? '')
+}
+
+function onSettingInput(key: string, value: string) {
+  settingsDirty.value[key] = value
+}
+
+async function saveSettingValue(key: string) {
+  const value = settingsDirty.value[key]
+  if (value === undefined) return
+  try {
+    await updateSetting(key, value)
+    const setting = settings.value.find(s => s.key === key)
+    if (setting) setting.value = value
+    delete settingsDirty.value[key]
+  } catch (error) {
+    alert(error instanceof Error ? error.message : 'Failed to save setting')
+  }
+}
+
+function isSettingDirty(key: string): boolean {
+  return key in settingsDirty.value && settingsDirty.value[key] !== settings.value.find(s => s.key === key)?.value
+}
 </script>
