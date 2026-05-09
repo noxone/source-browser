@@ -2,6 +2,7 @@ package com.hlag.sourceviewer.adapter.incoming.rest;
 
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.UpdateUserAccountDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.UserAccountDto;
+import com.hlag.sourceviewer.adapter.incoming.rest.dto.UserAccountPageDto;
 import com.hlag.sourceviewer.domain.model.identifier.PrincipalName;
 import com.hlag.sourceviewer.domain.model.identifier.UserAccountIdentifier;
 import com.hlag.sourceviewer.domain.model.user.UserAccount;
@@ -11,16 +12,16 @@ import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
-
-import java.util.List;
 
 /**
  * REST resource for managing user accounts and querying the current user's profile.
@@ -55,16 +56,27 @@ public class UserAccountResource {
     }
 
     /**
-     * Returns all provisioned user accounts. Requires administrator privileges.
+     * Returns a page of provisioned user accounts. Requires administrator privileges.
      *
-     * @return list of all user accounts
+     * @param query    optional substring to filter by principal name (case-insensitive), defaults to empty
+     * @param page     the one-based page number to return, defaults to 1
+     * @param pageSize the maximum number of accounts per page, defaults to 25
+     * @return a page of matching user accounts
      */
     @GET
     @RolesAllowed("admin")
-    public List<UserAccountDto> listUsers() {
-        return manageUserAccountsUseCase.listUsers().stream()
-                .map(this::toDto)
-                .toList();
+    public UserAccountPageDto listUsers(
+            @QueryParam("query") @DefaultValue("") String query,
+            @QueryParam("page") @DefaultValue("1") int page,
+            @QueryParam("pageSize") @DefaultValue("25") int pageSize) {
+        var domainPage = manageUserAccountsUseCase.listUsers(query, page, pageSize);
+        return new UserAccountPageDto(
+                domainPage.items().stream().map(this::toDto).toList(),
+                domainPage.totalItems(),
+                domainPage.page(),
+                domainPage.pageSize(),
+                domainPage.totalPages()
+        );
     }
 
     /**

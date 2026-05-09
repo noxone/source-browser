@@ -1,4 +1,4 @@
-import type { UserAccount, UpdateUserAccountRequest } from '../types/user-account'
+import type { UserAccount, UserAccountPage, UpdateUserAccountRequest } from '../types/user-account'
 import { authenticatedFetch } from './http'
 
 const BASE = '/api/users'
@@ -15,8 +15,14 @@ export async function getCurrentUserAccount(): Promise<UserAccount> {
   return handleResponse(await authenticatedFetch(`${BASE}/me`))
 }
 
-export async function listUserAccounts(): Promise<UserAccount[]> {
-  return handleResponse(await authenticatedFetch(BASE))
+export async function listUserAccounts(
+  query: string = '',
+  page: number = 1,
+  pageSize: number = 25
+): Promise<UserAccountPage> {
+  const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+  if (query.trim()) params.set('query', query.trim())
+  return handleResponse(await authenticatedFetch(`${BASE}?${params}`))
 }
 
 export async function updateUserAccount(

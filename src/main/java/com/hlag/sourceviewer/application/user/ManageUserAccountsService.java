@@ -1,5 +1,6 @@
 package com.hlag.sourceviewer.application.user;
 
+import com.hlag.sourceviewer.domain.model.Page;
 import com.hlag.sourceviewer.domain.model.identifier.PrincipalName;
 import com.hlag.sourceviewer.domain.model.identifier.UserAccountIdentifier;
 import com.hlag.sourceviewer.domain.model.user.UserAccount;
@@ -12,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 
@@ -61,8 +61,12 @@ public class ManageUserAccountsService implements ManageUserAccountsUseCase {
 
     /** @inheritDoc */
     @Override
-    public List<UserAccount> listUsers() {
-        return userAccountStore.findAll();
+    public Page<UserAccount> listUsers(String principalNameFilter, int page, int pageSize) {
+        String filter = principalNameFilter == null ? "" : principalNameFilter.trim();
+        int offset = (page - 1) * pageSize;
+        var items = userAccountStore.findPage(filter, offset, pageSize);
+        long totalItems = userAccountStore.countMatching(filter);
+        return new Page<>(items, totalItems, page, pageSize);
     }
 
     /** @inheritDoc */

@@ -36,6 +36,26 @@ public interface UserAccountStore {
     List<UserAccount> findAll();
 
     /**
+     * Returns a page of accounts whose principal name contains the given filter string
+     * (case-insensitive). An empty filter matches all accounts.
+     *
+     * @param principalNameFilter a substring to filter on, or empty to match all accounts
+     * @param offset              the zero-based index of the first result
+     * @param limit               the maximum number of results to return
+     * @return matching accounts ordered by creation date ascending
+     */
+    List<UserAccount> findPage(String principalNameFilter, int offset, int limit);
+
+    /**
+     * Returns the number of accounts whose principal name contains the given filter string
+     * (case-insensitive). An empty filter counts all accounts.
+     *
+     * @param principalNameFilter a substring to filter on, or empty to match all accounts
+     * @return the count of matching accounts
+     */
+    long countMatching(String principalNameFilter);
+
+    /**
      * Returns the total number of accounts stored.
      *
      * @return the account count

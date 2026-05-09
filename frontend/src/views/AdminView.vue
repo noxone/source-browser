@@ -2,8 +2,28 @@
   <div>
     <div class="mb-8">
       <h1 class="text-2xl font-bold text-gray-900">Admin</h1>
-      <p class="mt-1 text-sm text-gray-500">Manage repositories and Git provider configuration.</p>
+      <p class="mt-1 text-sm text-gray-500">Manage repositories, Git provider configuration and users.</p>
     </div>
+
+    <!-- ── Tab bar ──────────────────────────────────────────────────────────── -->
+    <div class="flex gap-1 mb-8 border-b border-gray-200">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        @click="activeTab = tab.id"
+        class="px-5 py-2.5 text-sm font-medium rounded-t-lg transition-colors -mb-px border-b-2"
+        :class="activeTab === tab.id
+          ? 'text-indigo-700 border-indigo-600 bg-white'
+          : 'text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300'"
+      >
+        {{ tab.label }}
+      </button>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         Tab: Repositories
+         ════════════════════════════════════════════════════════════════════════ -->
+    <div v-show="activeTab === 'repositories'">
 
     <!-- ── Repositories ─────────────────────────────────────────────────────── -->
     <div class="flex items-center justify-between mb-6">
@@ -321,82 +341,162 @@
       </div>
     </div>
 
-    <!-- ── Users ────────────────────────────────────────────────────────────────── -->
-    <div class="flex items-center justify-between mt-12 mb-6">
-      <div>
-        <h2 class="text-xl font-semibold text-gray-900">Users</h2>
-        <p class="mt-1 text-sm text-gray-500">
-          All provisioned users. The first user to log in is automatically made an administrator.
-        </p>
+    </div> <!-- end repositories tab -->
+
+    <!-- ════════════════════════════════════════════════════════════════════════
+         Tab: Users
+         ════════════════════════════════════════════════════════════════════════ -->
+    <div v-show="activeTab === 'users'">
+
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-semibold text-gray-900">Users</h2>
+          <p class="mt-1 text-sm text-gray-500">
+            All provisioned users. The first user to log in is automatically made an administrator.
+          </p>
+        </div>
       </div>
-    </div>
 
-    <!-- Users loading -->
-    <div v-if="usersLoading" class="flex items-center justify-center py-16 text-gray-400">
-      <svg class="animate-spin w-6 h-6 mr-3" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-      </svg>
-      Loading users…
-    </div>
+      <!-- Search bar -->
+      <div class="mb-4 flex items-center gap-3">
+        <div class="relative flex-1 max-w-sm">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/>
+          </svg>
+          <input
+            v-model="userSearchQuery"
+            @input="onUserSearchInput"
+            type="search"
+            placeholder="Filter by username…"
+            class="w-full pl-9 pr-4 py-2 text-sm border border-gray-300 rounded-lg bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+          />
+        </div>
+        <span v-if="userSearchQuery" class="text-sm text-gray-500">
+          {{ userTotalItems }} {{ userTotalItems === 1 ? 'match' : 'matches' }}
+        </span>
+      </div>
 
-    <!-- Users error -->
-    <div v-else-if="usersLoadError" class="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
-      <p class="font-semibold">Failed to load users</p>
-      <p class="mt-1">{{ usersLoadError }}</p>
-      <button @click="fetchUsers" class="mt-3 underline hover:no-underline">Try again</button>
-    </div>
+      <!-- Users loading -->
+      <div v-if="usersLoading" class="flex items-center justify-center py-16 text-gray-400">
+        <svg class="animate-spin w-6 h-6 mr-3" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+        Loading users…
+      </div>
 
-    <!-- Users table -->
-    <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <table class="min-w-full divide-y divide-gray-200">
-        <thead class="bg-gray-50">
-          <tr>
-            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Username</th>
-            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">First Login</th>
-            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
-            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-100">
-          <tr v-for="userAccount in users" :key="userAccount.id" class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4">
-              <span class="font-medium text-gray-900 text-sm">{{ userAccount.principalName }}</span>
-            </td>
-            <td class="px-6 py-4 text-sm text-gray-500">{{ formatDate(userAccount.createdAt) }}</td>
-            <td class="px-6 py-4">
-              <span
-                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
-                :class="userAccount.admin
-                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                  : 'bg-gray-50 text-gray-500 border border-gray-200'"
-              >
-                {{ userAccount.admin ? 'Admin' : 'User' }}
-              </span>
-            </td>
-            <td class="px-6 py-4 text-right">
-              <button
-                v-if="userAccount.admin"
-                @click="setAdminStatus(userAccount, false)"
-                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Revoke Admin
-              </button>
+      <!-- Users error -->
+      <div v-else-if="usersLoadError" class="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
+        <p class="font-semibold">Failed to load users</p>
+        <p class="mt-1">{{ usersLoadError }}</p>
+        <button @click="fetchUsers" class="mt-3 underline hover:no-underline">Try again</button>
+      </div>
+
+      <!-- Users table -->
+      <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Username</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">First Login</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+              <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr v-if="paginatedUsers.length === 0">
+              <td colspan="4" class="px-6 py-12 text-center text-sm text-gray-400 italic">
+                No users match your filter.
+              </td>
+            </tr>
+            <tr v-for="userAccount in paginatedUsers" :key="userAccount.id" class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4">
+                <span class="font-medium text-gray-900 text-sm">{{ userAccount.principalName }}</span>
+              </td>
+              <td class="px-6 py-4 text-sm text-gray-500">{{ formatDate(userAccount.createdAt) }}</td>
+              <td class="px-6 py-4">
+                <span
+                  class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                  :class="userAccount.admin
+                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                    : 'bg-gray-50 text-gray-500 border border-gray-200'"
+                >
+                  {{ userAccount.admin ? 'Admin' : 'User' }}
+                </span>
+              </td>
+              <td class="px-6 py-4 text-right">
+                <button
+                  v-if="userAccount.admin"
+                  @click="setAdminStatus(userAccount, false)"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Revoke Admin
+                </button>
+                <button
+                  v-else
+                  @click="setAdminStatus(userAccount, true)"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
+                >
+                  Make Admin
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Footer: count + pagination -->
+        <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-4">
+          <span class="text-xs text-gray-400">
+            {{ userTotalItems }} {{ userTotalItems === 1 ? 'user' : 'users' }}
+            <template v-if="userSearchQuery"> matching "{{ userSearchQuery }}"</template>
+            <template v-if="userTotalPages > 1"> · page {{ userCurrentPage }} of {{ userTotalPages }}</template>
+          </span>
+
+          <!-- Pagination controls -->
+          <div v-if="userTotalPages > 1" class="flex items-center gap-1">
+            <button
+              @click="onUserPageChange(1)"
+              :disabled="userCurrentPage === 1"
+              class="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="First page"
+            >«</button>
+            <button
+              @click="onUserPageChange(userCurrentPage - 1)"
+              :disabled="userCurrentPage === 1"
+              class="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Previous page"
+            >‹</button>
+
+            <template v-for="page in userPageWindow" :key="page">
+              <span v-if="page === '...'" class="px-2 py-1 text-xs text-gray-400">…</span>
               <button
                 v-else
-                @click="setAdminStatus(userAccount, true)"
-                class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-indigo-700 bg-white border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
-              >
-                Make Admin
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
-        {{ users.length }} {{ users.length === 1 ? 'user' : 'users' }}
+                @click="onUserPageChange(page as number)"
+                class="px-2.5 py-1 text-xs rounded border transition-colors"
+                :class="userCurrentPage === page
+                  ? 'bg-indigo-600 text-white border-indigo-600'
+                  : 'border-gray-300 text-gray-600 hover:bg-gray-100'"
+              >{{ page }}</button>
+            </template>
+
+            <button
+              @click="onUserPageChange(userCurrentPage + 1)"
+              :disabled="userCurrentPage === userTotalPages"
+              class="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Next page"
+            >›</button>
+            <button
+              @click="onUserPageChange(userTotalPages)"
+              :disabled="userCurrentPage === userTotalPages"
+              class="px-2 py-1 text-xs rounded border border-gray-300 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Last page"
+            >»</button>
+          </div>
+        </div>
       </div>
-    </div>
+
+    </div> <!-- end users tab -->
 
     <!-- Modals -->
     <RepositoryFormModal
@@ -433,11 +533,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import type { Repository } from '../types/repository'
 import type { GitProviderGroup } from '../types/git-provider-group'
 import type { GitCredential } from '../types/git-credential'
-import type { UserAccount } from '../types/user-account'
+import type { UserAccount, UserAccountPage } from '../types/user-account'
 import { listRepositories } from '../api/repositories'
 import { listGitProviderGroups, deleteGitProviderGroup } from '../api/git-provider-groups'
 import { getRepositoryCredential, getGroupCredential } from '../api/git-credentials'
@@ -448,6 +548,16 @@ import RepositoryFormModal from '../components/RepositoryFormModal.vue'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.vue'
 import GitProviderGroupFormModal from '../components/GitProviderGroupFormModal.vue'
 import CredentialFormModal from '../components/CredentialFormModal.vue'
+
+// ── Tab navigation ────────────────────────────────────────────────────────────
+
+const tabs = [
+  { id: 'repositories', label: 'Repositories' },
+  { id: 'users',        label: 'Users'         }
+] as const
+
+type TabId = typeof tabs[number]['id']
+const activeTab = ref<TabId>('repositories')
 
 // ── Repositories ──────────────────────────────────────────────────────────────
 
@@ -666,15 +776,40 @@ async function deleteGroup(group: GitProviderGroup) {
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 
-const users = ref<UserAccount[]>([])
+const userPage = ref<UserAccountPage | null>(null)
 const usersLoading = ref(false)
 const usersLoadError = ref('')
+
+const userSearchQuery = ref('')
+const userCurrentPage = ref(1)
+const userPageSize = 25
+
+let userSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+const paginatedUsers = computed(() => userPage.value?.items ?? [])
+const userTotalPages = computed(() => userPage.value?.totalPages ?? 1)
+const userTotalItems = computed(() => userPage.value?.totalItems ?? 0)
+
+/** Sliding window of page numbers shown around the current page, with ellipsis. */
+const userPageWindow = computed<(number | '...')[]>(() => {
+  const total = userTotalPages.value
+  const current = userCurrentPage.value
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const pages: (number | '...')[] = [1]
+  if (current > 3) pages.push('...')
+  const start = Math.max(2, current - 1)
+  const end   = Math.min(total - 1, current + 1)
+  for (let p = start; p <= end; p++) pages.push(p)
+  if (current < total - 2) pages.push('...')
+  pages.push(total)
+  return pages
+})
 
 async function fetchUsers() {
   usersLoading.value = true
   usersLoadError.value = ''
   try {
-    users.value = await listUserAccounts()
+    userPage.value = await listUserAccounts(userSearchQuery.value, userCurrentPage.value, userPageSize)
   } catch (error) {
     usersLoadError.value = error instanceof Error ? error.message : 'Unknown error'
   } finally {
@@ -682,13 +817,23 @@ async function fetchUsers() {
   }
 }
 
+function onUserSearchInput() {
+  if (userSearchDebounceTimer !== null) clearTimeout(userSearchDebounceTimer)
+  userSearchDebounceTimer = setTimeout(() => {
+    userCurrentPage.value = 1
+    fetchUsers()
+  }, 300)
+}
+
+function onUserPageChange(page: number) {
+  userCurrentPage.value = page
+  fetchUsers()
+}
+
 async function setAdminStatus(userAccount: UserAccount, admin: boolean) {
   try {
-    const updated = await updateUserAccount(userAccount.id, { admin })
-    const index = users.value.findIndex(u => u.id === updated.id)
-    if (index >= 0) {
-      users.value[index] = updated
-    }
+    await updateUserAccount(userAccount.id, { admin })
+    await fetchUsers()
   } catch (error) {
     alert(error instanceof Error ? error.message : 'Failed to update user')
   }

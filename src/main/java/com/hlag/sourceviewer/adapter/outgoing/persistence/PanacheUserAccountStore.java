@@ -49,6 +49,30 @@ public class PanacheUserAccountStore implements UserAccountStore {
 
     /** @inheritDoc */
     @Override
+    @SuppressWarnings("unchecked")
+    public List<UserAccount> findPage(String principalNameFilter, int offset, int limit) {
+        String pattern = "%" + principalNameFilter.toLowerCase() + "%";
+        return em.createNativeQuery(
+                "SELECT * FROM user_account WHERE LOWER(principal_name) LIKE :pattern ORDER BY created_at ASC",
+                UserAccount.class)
+            .setParameter("pattern", pattern)
+            .setFirstResult(offset)
+            .setMaxResults(limit)
+            .getResultList();
+    }
+
+    /** @inheritDoc */
+    @Override
+    public long countMatching(String principalNameFilter) {
+        String pattern = "%" + principalNameFilter.toLowerCase() + "%";
+        return ((Number) em.createNativeQuery(
+                "SELECT COUNT(*) FROM user_account WHERE LOWER(principal_name) LIKE :pattern")
+            .setParameter("pattern", pattern)
+            .getSingleResult()).longValue();
+    }
+
+    /** @inheritDoc */
+    @Override
     public long countAll() {
         return em.createQuery("select count(u) from UserAccount u", Long.class)
             .getSingleResult();

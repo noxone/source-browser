@@ -1,10 +1,10 @@
 package com.hlag.sourceviewer.domain.port.incoming;
 
+import com.hlag.sourceviewer.domain.model.Page;
 import com.hlag.sourceviewer.domain.model.identifier.PrincipalName;
 import com.hlag.sourceviewer.domain.model.identifier.UserAccountIdentifier;
 import com.hlag.sourceviewer.domain.model.user.UserAccount;
 
-import java.util.List;
 import java.util.Optional;
 
 /**
@@ -30,11 +30,15 @@ public interface ManageUserAccountsUseCase {
     Optional<UserAccount> findUser(PrincipalName principalName);
 
     /**
-     * Returns all provisioned user accounts ordered by creation date.
+     * Returns a page of provisioned user accounts, optionally filtered by principal name.
      *
-     * @return list of all accounts, never null
+     * @param principalNameFilter a substring to match against principal names (case-insensitive),
+     *                            or blank to return all accounts
+     * @param page                the one-based page number to return
+     * @param pageSize            the maximum number of accounts per page
+     * @return the requested page of accounts, never null
      */
-    List<UserAccount> listUsers();
+    Page<UserAccount> listUsers(String principalNameFilter, int page, int pageSize);
 
     /**
      * Grants or revokes administrator privileges for the account with the given identifier.

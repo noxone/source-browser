@@ -8,3 +8,11 @@ export interface UserAccount {
 export interface UpdateUserAccountRequest {
   admin: boolean
 }
+
+export interface UserAccountPage {
+  items: UserAccount[]
+  totalItems: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
