@@ -45,4 +45,21 @@ public interface PersonalAccessTokenStore {
      * @param owner      the owner, used to prevent cross-user deletion
      */
     void delete(PersonalAccessTokenIdentifier identifier, PrincipalName owner);
+
+    /**
+     * Removes the token with the given identifier regardless of owner.
+     * Intended for administrator-level operations (e.g. cleaning up a service account).
+     * Does nothing if no such token exists.
+     *
+     * @param identifier the identifier of the token to remove
+     */
+    void deleteById(PersonalAccessTokenIdentifier identifier);
+
+    /**
+     * Removes all tokens owned by the given principal.
+     * Intended for administrator-level cleanup (e.g. deleting a service account).
+     *
+     * @param owner the owner whose tokens shall be removed
+     */
+    void deleteAllByOwner(PrincipalName owner);
 }

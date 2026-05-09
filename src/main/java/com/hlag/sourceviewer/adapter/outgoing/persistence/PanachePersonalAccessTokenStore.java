@@ -61,4 +61,22 @@ public class PanachePersonalAccessTokenStore implements PersonalAccessTokenStore
             .setParameter("owner", owner)
             .executeUpdate();
     }
+
+    /** @inheritDoc */
+    @Override
+    @Transactional
+    public void deleteById(PersonalAccessTokenIdentifier identifier) {
+        em.createQuery("delete from PersonalAccessToken where id = :id")
+            .setParameter("id", identifier.value())
+            .executeUpdate();
+    }
+
+    /** @inheritDoc */
+    @Override
+    @Transactional
+    public void deleteAllByOwner(PrincipalName owner) {
+        em.createQuery("delete from PersonalAccessToken where owner = :owner")
+            .setParameter("owner", owner)
+            .executeUpdate();
+    }
 }

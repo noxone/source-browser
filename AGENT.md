@@ -486,6 +486,28 @@ implementation (how it is done internally).
 - ArchUnit tests reside in `com.hlag.sourceviewer.architecture` and
   are executed on every build.
 
+### 4.16 Test Coverage Requirement
+
+Every new feature or significant change **must** be accompanied by tests.
+100% line coverage is not required, but the following must be covered:
+
+- **Application services** (`application..`): All meaningful business logic paths
+  (happy path, not-found cases, validation errors, ordering of side effects)
+  must be covered by `UnitTest` classes using mocks.
+- **REST resources** (`adapter.incoming.rest..`): All HTTP endpoints must be covered
+  by `ApiTest` classes: correct status codes, request/response serialization, and
+  access-control (admin-only endpoints must be verified with a non-admin call).
+- **Domain logic**: Non-trivial logic in domain models or services gets
+  `UnitTest` coverage.
+- **Infrastructure / security**: Components that contain branching logic
+  (e.g., `SecurityIdentityAugmentor`, auth mechanisms) must have `UnitTest`
+  coverage for each significant branch.
+- **Persistence adapters**: Complex queries may be covered by `InfraTest` using
+  Testcontainers when the logic cannot be verified at the service or API level.
+
+When an AI assistant implements new functionality, it must also write the
+corresponding tests in the same pull request / commit set.
+
 ---
 
 ## 5. Data Model Conventions

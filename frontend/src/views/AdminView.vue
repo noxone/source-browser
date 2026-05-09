@@ -498,6 +498,135 @@
 
     </div> <!-- end users tab -->
 
+    <!-- ════════════════════════════════════════════════════════════════════════
+         Tab: Service Accounts
+         ════════════════════════════════════════════════════════════════════════ -->
+    <div v-show="activeTab === 'serviceaccounts'">
+
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-semibold text-gray-900">Service Accounts</h2>
+          <p class="mt-1 text-sm text-gray-500">
+            Machine identities for bots and CI systems. Service accounts cannot log in via the UI
+            but may use Personal Access Tokens for API access.
+          </p>
+        </div>
+        <button
+          @click="openCreateServiceAccountModal"
+          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add Service Account
+        </button>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="serviceAccountsLoading" class="flex items-center justify-center py-16 text-gray-400">
+        <svg class="animate-spin w-6 h-6 mr-3" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+        Loading service accounts…
+      </div>
+
+      <!-- Error -->
+      <div v-else-if="serviceAccountsLoadError" class="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
+        <p class="font-semibold">Failed to load service accounts</p>
+        <p class="mt-1">{{ serviceAccountsLoadError }}</p>
+        <button @click="fetchServiceAccounts" class="mt-3 underline hover:no-underline">Try again</button>
+      </div>
+
+      <!-- Empty -->
+      <div v-else-if="serviceAccounts.length === 0" class="flex flex-col items-center justify-center py-24 text-center">
+        <div class="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center mb-4">
+          <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082M19.8 15l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.5-1.562-.394M5 14.5l-1.562.394"/>
+          </svg>
+        </div>
+        <h3 class="text-base font-semibold text-gray-900">No service accounts yet</h3>
+        <p class="mt-1 text-sm text-gray-500">Create a service account to allow bots and CI systems to access the API.</p>
+        <button
+          @click="openCreateServiceAccountModal"
+          class="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add Service Account
+        </button>
+      </div>
+
+      <!-- Table -->
+      <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Created</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Role</th>
+              <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr v-for="account in serviceAccounts" :key="account.id" class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4">
+                <span class="font-mono text-sm font-medium text-gray-900">{{ account.name }}</span>
+              </td>
+              <td class="px-6 py-4 text-sm text-gray-500">{{ formatDate(account.createdAt) }}</td>
+              <td class="px-6 py-4">
+                <span
+                  class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
+                  :class="account.admin
+                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                    : 'bg-gray-50 text-gray-500 border border-gray-200'"
+                >
+                  {{ account.admin ? 'Admin' : 'User' }}
+                </span>
+              </td>
+              <td class="px-6 py-4 text-right">
+                <div class="inline-flex items-center gap-2">
+                  <button
+                    @click="openEditServiceAccountModal(account)"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                    Edit
+                  </button>
+                  <button
+                    @click="openTokensModal(account)"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-amber-700 bg-white border border-amber-200 rounded-lg hover:bg-amber-50 transition-colors"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                    </svg>
+                    Tokens
+                  </button>
+                  <button
+                    @click="removeServiceAccount(account)"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+          {{ serviceAccounts.length }} {{ serviceAccounts.length === 1 ? 'service account' : 'service accounts' }}
+        </div>
+      </div>
+
+    </div> <!-- end service accounts tab -->
+
     <!-- Modals -->
     <RepositoryFormModal
       v-if="showRepoFormModal"
@@ -529,6 +658,19 @@
       @saved="handleCredentialSaved"
       @removed="handleCredentialRemoved"
     />
+
+    <ServiceAccountFormModal
+      v-if="showServiceAccountFormModal"
+      :account="editingServiceAccount"
+      @close="closeServiceAccountFormModal"
+      @saved="handleServiceAccountSaved"
+    />
+
+    <ServiceAccountTokensModal
+      v-if="showServiceAccountTokensModal && managingServiceAccount"
+      :account="managingServiceAccount"
+      @close="closeTokensModal"
+    />
   </div>
 </template>
 
@@ -538,22 +680,27 @@ import type { Repository } from '../types/repository'
 import type { GitProviderGroup } from '../types/git-provider-group'
 import type { GitCredential } from '../types/git-credential'
 import type { UserAccount, UserAccountPage } from '../types/user-account'
+import type { ServiceAccount } from '../types/service-account'
 import { listRepositories } from '../api/repositories'
 import { listGitProviderGroups, deleteGitProviderGroup } from '../api/git-provider-groups'
 import { getRepositoryCredential, getGroupCredential } from '../api/git-credentials'
 import { triggerRepositoryScan } from '../api/repositories'
 import { triggerGroupScan } from '../api/git-provider-groups'
 import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
+import { listServiceAccounts, deleteServiceAccount } from '../api/service-accounts'
 import RepositoryFormModal from '../components/RepositoryFormModal.vue'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.vue'
 import GitProviderGroupFormModal from '../components/GitProviderGroupFormModal.vue'
 import CredentialFormModal from '../components/CredentialFormModal.vue'
+import ServiceAccountFormModal from '../components/ServiceAccountFormModal.vue'
+import ServiceAccountTokensModal from '../components/ServiceAccountTokensModal.vue'
 
 // ── Tab navigation ────────────────────────────────────────────────────────────
 
 const tabs = [
-  { id: 'repositories', label: 'Repositories' },
-  { id: 'users',        label: 'Users'         }
+  { id: 'repositories',    label: 'Repositories'    },
+  { id: 'users',           label: 'Users'           },
+  { id: 'serviceaccounts', label: 'Service Accounts' }
 ] as const
 
 type TabId = typeof tabs[number]['id']
@@ -626,6 +773,7 @@ onMounted(() => {
   fetchRepositories()
   fetchGroups()
   fetchUsers()
+  fetchServiceAccounts()
 })
 
 async function fetchRepositories() {
@@ -844,5 +992,74 @@ function formatDate(isoString: string): string {
     dateStyle: 'medium',
     timeStyle: 'short'
   })
+}
+
+// ── Service Accounts ──────────────────────────────────────────────────────────
+
+const serviceAccounts = ref<ServiceAccount[]>([])
+const serviceAccountsLoading = ref(false)
+const serviceAccountsLoadError = ref('')
+
+const showServiceAccountFormModal = ref(false)
+const editingServiceAccount = ref<ServiceAccount | undefined>(undefined)
+
+const showServiceAccountTokensModal = ref(false)
+const managingServiceAccount = ref<ServiceAccount | undefined>(undefined)
+
+async function fetchServiceAccounts() {
+  serviceAccountsLoading.value = true
+  serviceAccountsLoadError.value = ''
+  try {
+    serviceAccounts.value = await listServiceAccounts()
+  } catch (error) {
+    serviceAccountsLoadError.value = error instanceof Error ? error.message : 'Unknown error'
+  } finally {
+    serviceAccountsLoading.value = false
+  }
+}
+
+function openCreateServiceAccountModal() {
+  editingServiceAccount.value = undefined
+  showServiceAccountFormModal.value = true
+}
+
+function openEditServiceAccountModal(account: ServiceAccount) {
+  editingServiceAccount.value = account
+  showServiceAccountFormModal.value = true
+}
+
+function closeServiceAccountFormModal() {
+  showServiceAccountFormModal.value = false
+  editingServiceAccount.value = undefined
+}
+
+function handleServiceAccountSaved(saved: ServiceAccount) {
+  const index = serviceAccounts.value.findIndex(a => a.id === saved.id)
+  if (index >= 0) {
+    serviceAccounts.value[index] = saved
+  } else {
+    serviceAccounts.value.push(saved)
+  }
+  closeServiceAccountFormModal()
+}
+
+async function removeServiceAccount(account: ServiceAccount) {
+  if (!confirm(`Delete service account "${account.name}" and all its tokens? This cannot be undone.`)) return
+  try {
+    await deleteServiceAccount(account.id)
+    serviceAccounts.value = serviceAccounts.value.filter(a => a.id !== account.id)
+  } catch (error) {
+    alert(error instanceof Error ? error.message : 'Failed to delete service account')
+  }
+}
+
+function openTokensModal(account: ServiceAccount) {
+  managingServiceAccount.value = account
+  showServiceAccountTokensModal.value = true
+}
+
+function closeTokensModal() {
+  showServiceAccountTokensModal.value = false
+  managingServiceAccount.value = undefined
 }
 </script>

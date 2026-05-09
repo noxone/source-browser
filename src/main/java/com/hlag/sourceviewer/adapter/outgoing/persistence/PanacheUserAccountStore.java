@@ -85,4 +85,13 @@ public class PanacheUserAccountStore implements UserAccountStore {
         em.persist(userAccount);
         return userAccount.identifier();
     }
+
+    /** @inheritDoc */
+    @Override
+    @Transactional
+    public void deleteById(UserAccountIdentifier identifier) {
+        em.createQuery("delete from UserAccount where id = :id")
+            .setParameter("id", identifier.value())
+            .executeUpdate();
+    }
 }

@@ -1,6 +1,7 @@
 package com.hlag.sourceviewer.infrastructure.security;
 
 import com.hlag.sourceviewer.domain.model.identifier.PrincipalName;
+import com.hlag.sourceviewer.domain.port.incoming.ManageServiceAccountsUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageUserAccountsUseCase;
 import io.quarkus.security.identity.AuthenticationRequestContext;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -11,6 +12,8 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Optional;
 
 /**
  * Augments the authenticated {@link SecurityIdentity} with application-level roles.
@@ -51,9 +54,15 @@ public class UserAccountSecurityAugmentor implements SecurityIdentityAugmentor {
     private SecurityIdentity augmentWithRoles(SecurityIdentity identity) {
         try {
             var principalName = new PrincipalName(identity.getPrincipal().getName());
-            var account = manageUserAccountsUseCase.provisionUser(principalName);
 
-            if (!account.isAdmin()) {
+            boolean isServiceAccountPrincipal = principalName.value()
+                    .startsWith(ManageServiceAccountsUseCase.SERVICE_ACCOUNT_PRINCIPAL_PREFIX);
+
+            var account = isServiceAccountPrincipal
+                    ? manageUserAccountsUseCase.findUser(principalName)
+                    : Optional.of(manageUserAccountsUseCase.provisionUser(principalName));
+
+            if (account.isEmpty() || !account.get().isAdmin()) {
                 return identity;
             }
 

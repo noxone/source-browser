@@ -41,7 +41,7 @@ public class ManageUserAccountsService implements ManageUserAccountsUseCase {
         }
 
         boolean isFirstUser = userAccountStore.countAll() == 0;
-        var account = new UserAccount(principalName, isFirstUser, Instant.now());
+        var account = new UserAccount(principalName, isFirstUser, false, Instant.now());
         userAccountStore.insert(account);
 
         if (isFirstUser) {

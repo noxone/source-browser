@@ -69,4 +69,12 @@ public interface UserAccountStore {
      * @return the generated identifier
      */
     UserAccountIdentifier insert(UserAccount userAccount);
+
+    /**
+     * Removes the account with the given identifier.
+     * Does nothing if no such account exists.
+     *
+     * @param identifier the identifier of the account to remove
+     */
+    void deleteById(UserAccountIdentifier identifier);
 }

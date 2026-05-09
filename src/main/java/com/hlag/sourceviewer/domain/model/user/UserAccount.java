@@ -17,6 +17,10 @@ import java.time.Instant;
  * <p>Accounts are provisioned automatically on first login. The first account
  * ever created receives admin privileges so that the system can be bootstrapped
  * without out-of-band configuration.</p>
+ *
+ * <p>Service accounts are a special kind of account intended for bots and technical
+ * users. They cannot log in via the UI but may hold Personal Access Tokens.
+ * Their {@code principalName} always starts with the {@code svc:} prefix.</p>
  */
 @Entity
 @Table(name = "user_account")
@@ -32,6 +36,9 @@ public class UserAccount {
     @Column(name = "is_admin", nullable = false)
     private boolean admin;
 
+    @Column(name = "is_service_account", nullable = false)
+    private boolean serviceAccount;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -40,13 +47,15 @@ public class UserAccount {
     /**
      * Creates a new user account for the given principal.
      *
-     * @param principalName the unique name of the principal from the identity provider
-     * @param admin         whether this account has administrator privileges
-     * @param createdAt     the instant at which the account was first provisioned
+     * @param principalName  the unique name of the principal from the identity provider
+     * @param admin          whether this account has administrator privileges
+     * @param serviceAccount whether this account is a service account (bot / technical user)
+     * @param createdAt      the instant at which the account was first provisioned
      */
-    public UserAccount(PrincipalName principalName, boolean admin, Instant createdAt) {
+    public UserAccount(PrincipalName principalName, boolean admin, boolean serviceAccount, Instant createdAt) {
         this.principalName = principalName;
         this.admin = admin;
+        this.serviceAccount = serviceAccount;
         this.createdAt = createdAt;
     }
 
@@ -62,6 +71,9 @@ public class UserAccount {
 
     /** Returns {@code true} if this user has administrator privileges. */
     public boolean isAdmin() { return admin; }
+
+    /** Returns {@code true} if this account is a service account (bot / technical user). */
+    public boolean isServiceAccount() { return serviceAccount; }
 
     /** Returns the instant at which this account was first provisioned. */
     public Instant createdAt() { return createdAt; }

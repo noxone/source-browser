@@ -2,6 +2,7 @@ export interface UserAccount {
   id: number
   principalName: string
   admin: boolean
+  serviceAccount: boolean
   createdAt: string
 }
 

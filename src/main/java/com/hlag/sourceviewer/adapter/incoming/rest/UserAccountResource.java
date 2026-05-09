@@ -106,6 +106,7 @@ public class UserAccountResource {
                 account.identifier().value(),
                 account.principalName().value(),
                 account.isAdmin(),
+                account.isServiceAccount(),
                 account.createdAt().toString()
         );
     }
