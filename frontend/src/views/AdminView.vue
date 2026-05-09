@@ -627,7 +627,151 @@
 
     </div> <!-- end service accounts tab -->
 
-    <!-- Modals -->
+    <!-- ════════════════════════════════════════════════════════════════════════
+         Tab: Scan Jobs
+         ════════════════════════════════════════════════════════════════════════ -->
+    <div v-show="activeTab === 'scanjobs'">
+
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-semibold text-gray-900">Scan Jobs</h2>
+          <p class="mt-1 text-sm text-gray-500">
+            View and manage repository scan jobs. Only queued jobs can be deleted.
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button
+            @click="fetchScanJobs"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            title="Refresh"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Refresh
+          </button>
+          <button
+            @click="removeAllQueuedScanJobs"
+            :disabled="queuedScanJobCount === 0"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+            Delete All Queued
+          </button>
+        </div>
+      </div>
+
+      <!-- Status filter pills -->
+      <div class="flex items-center gap-2 mb-5">
+        <span class="text-xs font-medium text-gray-500 mr-1">Filter:</span>
+        <button
+          v-for="filter in [
+            { value: '',        label: 'All'       },
+            { value: 'QUEUED',  label: 'Queued'    },
+            { value: 'RUNNING', label: 'Running'   },
+            { value: 'DONE',    label: 'Done'      },
+            { value: 'FAILED',  label: 'Failed'    }
+          ]"
+          :key="filter.value"
+          @click="onScanJobStatusFilterChange(filter.value as ScanJobStatusFilter)"
+          class="px-3 py-1 text-xs font-medium rounded-full border transition-colors"
+          :class="scanJobStatusFilter === filter.value
+            ? 'bg-indigo-600 text-white border-indigo-600'
+            : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'"
+        >
+          {{ filter.label }}
+        </button>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="scanJobsLoading" class="flex items-center justify-center py-16 text-gray-400">
+        <svg class="animate-spin w-6 h-6 mr-3" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+        Loading scan jobs…
+      </div>
+
+      <!-- Error -->
+      <div v-else-if="scanJobsLoadError" class="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
+        <p class="font-semibold">Failed to load scan jobs</p>
+        <p class="mt-1">{{ scanJobsLoadError }}</p>
+        <button @click="fetchScanJobs" class="mt-3 underline hover:no-underline">Try again</button>
+      </div>
+
+      <!-- Empty -->
+      <div v-else-if="scanJobs.length === 0" class="flex flex-col items-center justify-center py-24 text-center">
+        <div class="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-4">
+          <svg class="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+        </div>
+        <h3 class="text-base font-semibold text-gray-900">No scan jobs</h3>
+        <p class="mt-1 text-sm text-gray-500">
+          {{ scanJobStatusFilter ? `No jobs with status "${scanJobStatusFilter}".` : 'No scan jobs found.' }}
+        </p>
+      </div>
+
+      <!-- Table -->
+      <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">ID</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Repository</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Trigger</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Commit</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Queued At</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Started At</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="job in scanJobs" :key="job.id" class="hover:bg-gray-50 transition-colors">
+                <td class="px-6 py-4 text-sm font-mono text-gray-500">#{{ job.id }}</td>
+                <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ repositoryName(job.repositoryId) }}</td>
+                <td class="px-6 py-4 text-sm text-gray-500">{{ TRIGGER_LABELS[job.triggerType] ?? job.triggerType }}</td>
+                <td class="px-6 py-4 text-sm font-mono text-gray-400">
+                  {{ job.commitSha ? job.commitSha.substring(0, 8) : '—' }}
+                </td>
+                <td class="px-6 py-4">
+                  <span
+                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
+                    :class="STATUS_CLASSES[job.status] ?? 'bg-gray-50 text-gray-500 border-gray-200'"
+                  >
+                    {{ job.status }}
+                  </span>
+                </td>
+                <td class="px-6 py-4 text-sm text-gray-500">{{ formatDate(job.queuedAt) }}</td>
+                <td class="px-6 py-4 text-sm text-gray-500">{{ job.startedAt ? formatDate(job.startedAt) : '—' }}</td>
+                <td class="px-6 py-4 text-right">
+                  <button
+                    @click="removeScanJob(job)"
+                    :disabled="job.status !== 'QUEUED'"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    :title="job.status !== 'QUEUED' ? 'Only queued jobs can be deleted' : 'Delete scan job'"
+                  >
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+          {{ scanJobs.length }} {{ scanJobs.length === 1 ? 'job' : 'jobs' }}
+          <template v-if="queuedScanJobCount > 0"> · {{ queuedScanJobCount }} queued</template>
+        </div>
+      </div>
+
+    </div> <!-- end scan jobs tab -->
     <RepositoryFormModal
       v-if="showRepoFormModal"
       :repository="editingRepository"
@@ -675,12 +819,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import type { Repository } from '../types/repository'
 import type { GitProviderGroup } from '../types/git-provider-group'
 import type { GitCredential } from '../types/git-credential'
 import type { UserAccount, UserAccountPage } from '../types/user-account'
 import type { ServiceAccount } from '../types/service-account'
+import type { ScanJob } from '../types/scan-job'
 import { listRepositories } from '../api/repositories'
 import { listGitProviderGroups, deleteGitProviderGroup } from '../api/git-provider-groups'
 import { getRepositoryCredential, getGroupCredential } from '../api/git-credentials'
@@ -688,6 +833,7 @@ import { triggerRepositoryScan } from '../api/repositories'
 import { triggerGroupScan } from '../api/git-provider-groups'
 import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
 import { listServiceAccounts, deleteServiceAccount } from '../api/service-accounts'
+import { listScanJobs, deleteScanJob, deleteAllQueuedScanJobs } from '../api/scan-jobs'
 import RepositoryFormModal from '../components/RepositoryFormModal.vue'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.vue'
 import GitProviderGroupFormModal from '../components/GitProviderGroupFormModal.vue'
@@ -700,7 +846,8 @@ import ServiceAccountTokensModal from '../components/ServiceAccountTokensModal.v
 const tabs = [
   { id: 'repositories',    label: 'Repositories'    },
   { id: 'users',           label: 'Users'           },
-  { id: 'serviceaccounts', label: 'Service Accounts' }
+  { id: 'serviceaccounts', label: 'Service Accounts' },
+  { id: 'scanjobs',        label: 'Scan Jobs'       }
 ] as const
 
 type TabId = typeof tabs[number]['id']
@@ -1062,4 +1209,78 @@ function closeTokensModal() {
   showServiceAccountTokensModal.value = false
   managingServiceAccount.value = undefined
 }
+
+// ── Scan Jobs ─────────────────────────────────────────────────────────────────
+
+type ScanJobStatusFilter = '' | 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED'
+
+const scanJobs = ref<ScanJob[]>([])
+const scanJobsLoading = ref(false)
+const scanJobsLoadError = ref('')
+const scanJobStatusFilter = ref<ScanJobStatusFilter>('QUEUED')
+
+/** Reload scan jobs whenever the user switches to this tab. */
+watch(activeTab, (tab) => {
+  if (tab === 'scanjobs') fetchScanJobs()
+})
+
+async function fetchScanJobs() {
+  scanJobsLoading.value = true
+  scanJobsLoadError.value = ''
+  try {
+    const status = scanJobStatusFilter.value || undefined
+    scanJobs.value = await listScanJobs(status)
+  } catch (error) {
+    scanJobsLoadError.value = error instanceof Error ? error.message : 'Unknown error'
+  } finally {
+    scanJobsLoading.value = false
+  }
+}
+
+async function onScanJobStatusFilterChange(status: ScanJobStatusFilter) {
+  scanJobStatusFilter.value = status
+  await fetchScanJobs()
+}
+
+async function removeScanJob(job: ScanJob) {
+  if (!confirm(`Delete scan job #${job.id} for repository ${repositoryName(job.repositoryId)}?`)) return
+  try {
+    await deleteScanJob(job.id)
+    scanJobs.value = scanJobs.value.filter(j => j.id !== job.id)
+  } catch (error) {
+    alert(error instanceof Error ? error.message : 'Failed to delete scan job')
+  }
+}
+
+async function removeAllQueuedScanJobs() {
+  const count = scanJobs.value.filter(j => j.status === 'QUEUED').length
+  if (count === 0) return
+  if (!confirm(`Delete all ${count} queued scan job${count === 1 ? '' : 's'}? This cannot be undone.`)) return
+  try {
+    await deleteAllQueuedScanJobs()
+    await fetchScanJobs()
+  } catch (error) {
+    alert(error instanceof Error ? error.message : 'Failed to delete queued scan jobs')
+  }
+}
+
+/** Returns the human-readable repository name for a given ID, falling back to the raw ID. */
+function repositoryName(repositoryId: number): string {
+  return repositories.value.find(r => r.id === repositoryId)?.name ?? `#${repositoryId}`
+}
+
+const TRIGGER_LABELS: Record<string, string> = {
+  WEBHOOK: 'Webhook',
+  CRON:    'Scheduled',
+  MANUAL:  'Manual'
+}
+
+const STATUS_CLASSES: Record<string, string> = {
+  QUEUED:  'bg-amber-50 text-amber-700 border-amber-200',
+  RUNNING: 'bg-blue-50 text-blue-700 border-blue-200',
+  DONE:    'bg-green-50 text-green-700 border-green-200',
+  FAILED:  'bg-red-50 text-red-700 border-red-200'
+}
+
+const queuedScanJobCount = computed(() => scanJobs.value.filter(j => j.status === 'QUEUED').length)
 </script>

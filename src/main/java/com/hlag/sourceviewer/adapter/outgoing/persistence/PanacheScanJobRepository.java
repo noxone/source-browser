@@ -34,6 +34,16 @@ public class PanacheScanJobRepository
     }
 
     @Override
+    public List<ScanJob> findAllScanJobs() {
+        return listAll();
+    }
+
+    @Override
+    public List<ScanJob> findByStatus(ScanJob.ScanJobStatus status) {
+        return list("status", status);
+    }
+
+    @Override
     public List<ScanJob> findByRepository(RepositoryIdentifier repositoryIdentifier) {
         return list("repositoryIdentifier", repositoryIdentifier);
     }
@@ -49,5 +59,17 @@ public class PanacheScanJobRepository
     @Transactional
     public void update(ScanJob scanJob) {
         getEntityManager().merge(scanJob);
+    }
+
+    @Override
+    @Transactional
+    public void deleteById(ScanJobIdentifier identifier) {
+        deleteById(identifier.value());
+    }
+
+    @Override
+    @Transactional
+    public void deleteAllQueued() {
+        delete("status", ScanJob.ScanJobStatus.QUEUED);
     }
 }

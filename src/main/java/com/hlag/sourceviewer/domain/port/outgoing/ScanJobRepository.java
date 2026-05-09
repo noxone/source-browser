@@ -17,9 +17,17 @@ public interface ScanJobRepository {
 
     Optional<ScanJob> pollNextQueued();
 
+    List<ScanJob> findAllScanJobs();
+
+    List<ScanJob> findByStatus(ScanJob.ScanJobStatus status);
+
     List<ScanJob> findByRepository(RepositoryIdentifier repositoryIdentifier);
 
     ScanJobIdentifier insert(ScanJob scanJob);
 
     void update(ScanJob scanJob);
+
+    void deleteById(ScanJobIdentifier identifier);
+
+    void deleteAllQueued();
 }
