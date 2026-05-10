@@ -3,9 +3,12 @@ package com.hlag.sourceviewer.adapter.incoming.rest;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.CreateGitProviderGroupDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.GitCredentialDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.GitProviderGroupDto;
+import com.hlag.sourceviewer.adapter.incoming.rest.dto.RepositoryDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.SetGitCredentialDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.UpdateGitProviderGroupDto;
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.ScanTriggerResponseDto;
+import com.hlag.sourceviewer.domain.model.identifier.BranchName;
+import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.CredentialDescription;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
@@ -15,6 +18,7 @@ import com.hlag.sourceviewer.domain.model.identifier.GroupPath;
 import com.hlag.sourceviewer.domain.model.identifier.SecretValue;
 import com.hlag.sourceviewer.domain.model.repository.GitCredential;
 import com.hlag.sourceviewer.domain.model.repository.GitProviderGroup;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase.SetCredentialCommand;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase;
@@ -203,7 +207,7 @@ public class GitProviderGroupResource {
     }
 
     /**
-     * Removes the credential for the given Git provider group.
+     * Removes the API credential for the given Git provider group.
      *
      * @param id the group identifier
      * @return 204 No Content
@@ -211,9 +215,76 @@ public class GitProviderGroupResource {
     @DELETE
     @Path("/{id}/credential")
     public Response deleteGroupCredential(@PathParam("id") Long id) {
-        logger.info("Deleting credential for group {}", id);
+        logger.info("Deleting API credential for group {}", id);
         manageGitCredentialsUseCase.removeCredentialForGroup(new GitProviderGroupIdentifier(id));
         return Response.noContent().build();
+    }
+
+    /**
+     * Returns the clone credential metadata for the given Git provider group.
+     * This credential is used for cloning/fetching discovered repositories.
+     *
+     * @param id the group identifier
+     * @return the clone credential metadata
+     * @throws NotFoundException if the group has no clone credential configured
+     */
+    @GET
+    @Path("/{id}/clone-credential")
+    public GitCredentialDto getGroupCloneCredential(@PathParam("id") Long id) {
+        return manageGitCredentialsUseCase.findCloneCredentialForGroup(new GitProviderGroupIdentifier(id))
+                .map(this::toCredentialDto)
+                .orElseThrow(() -> new NotFoundException("No clone credential configured for group: " + id));
+    }
+
+    /**
+     * Creates or replaces the clone credential for the given Git provider group.
+     *
+     * @param id      the group identifier
+     * @param request description and plaintext secret
+     * @return the persisted credential metadata
+     */
+    @PUT
+    @Path("/{id}/clone-credential")
+    public GitCredentialDto setGroupCloneCredential(@PathParam("id") Long id, SetGitCredentialDto request) {
+        logger.info("Setting clone credential for group {}", id);
+        var command = new ManageGitCredentialsUseCase.SetCredentialCommand(
+                Optional.ofNullable(request.description()).filter(s -> !s.isBlank()).map(CredentialDescription::new),
+                new SecretValue(request.secret())
+        );
+        return toCredentialDto(
+                manageGitCredentialsUseCase.setCloneCredentialForGroup(new GitProviderGroupIdentifier(id), command));
+    }
+
+    /**
+     * Removes the clone credential for the given Git provider group.
+     *
+     * @param id the group identifier
+     * @return 204 No Content
+     */
+    @DELETE
+    @Path("/{id}/clone-credential")
+    public Response deleteGroupCloneCredential(@PathParam("id") Long id) {
+        logger.info("Deleting clone credential for group {}", id);
+        manageGitCredentialsUseCase.removeCloneCredentialForGroup(new GitProviderGroupIdentifier(id));
+        return Response.noContent().build();
+    }
+
+    /**
+     * Returns all repositories discovered from the given Git provider group.
+     *
+     * @param id the group identifier
+     * @return list of repositories belonging to this group
+     * @throws NotFoundException if the group does not exist
+     */
+    @GET
+    @Path("/{id}/repositories")
+    public List<RepositoryDto> listGroupRepositories(@PathParam("id") Long id) {
+        manageGitProviderGroupsUseCase.findGitProviderGroup(new GitProviderGroupIdentifier(id))
+                .orElseThrow(() -> new NotFoundException("Git provider group not found: " + id));
+        return manageGitProviderGroupsUseCase.listGroupRepositories(new GitProviderGroupIdentifier(id))
+                .stream()
+                .map(this::toRepositoryDto)
+                .toList();
     }
 
     /**
@@ -236,6 +307,7 @@ public class GitProviderGroupResource {
     }
 
     private GitProviderGroupDto toDto(GitProviderGroup group) {
+        long repoCount = manageGitProviderGroupsUseCase.countGroupRepositories(group.identifier());
         return new GitProviderGroupDto(
                 group.identifier().value(),
                 group.name().value(),
@@ -243,7 +315,8 @@ public class GitProviderGroupResource {
                 group.groupPath().value(),
                 group.baseUrl().map(FilePath::value).orElse(null),
                 group.isArchivedOmitted(),
-                group.isForkedOmitted()
+                group.isForkedOmitted(),
+                repoCount
         );
     }
 
@@ -252,6 +325,17 @@ public class GitProviderGroupResource {
                 credential.identifier().value(),
                 credential.description().map(CredentialDescription::value).orElse(null),
                 credential.updatedAt()
+        );
+    }
+
+    private RepositoryDto toRepositoryDto(Repository repository) {
+        return new RepositoryDto(
+                repository.identifier().value(),
+                repository.name().value(),
+                repository.remoteUrl().map(FilePath::value).orElse(null),
+                repository.defaultBranch().value(),
+                repository.lastScannedAt().map(Object::toString).orElse(null),
+                repository.lastCommitSha().map(CommitSha::value).orElse(null)
         );
     }
 }

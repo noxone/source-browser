@@ -27,13 +27,22 @@ public interface ManageGitCredentialsUseCase {
     Optional<GitCredential> findCredentialForRepository(RepositoryIdentifier identifier);
 
     /**
-     * Returns the credential metadata for the given Git provider group, or empty if none is set.
+     * Returns the API credential metadata for the given Git provider group, or empty if none is set.
      * The returned entity never exposes the plaintext secret.
      *
      * @param identifier the group to look up
      * @return the credential metadata, or empty
      */
     Optional<GitCredential> findCredentialForGroup(GitProviderGroupIdentifier identifier);
+
+    /**
+     * Returns the clone credential metadata for the given Git provider group, or empty if none is set.
+     * This credential is used when cloning or fetching repositories discovered from the group.
+     *
+     * @param identifier the group to look up
+     * @return the credential metadata, or empty
+     */
+    Optional<GitCredential> findCloneCredentialForGroup(GitProviderGroupIdentifier identifier);
 
     /**
      * Creates or replaces the credential for the given repository.
@@ -46,7 +55,7 @@ public interface ManageGitCredentialsUseCase {
     GitCredential setCredentialForRepository(RepositoryIdentifier identifier, SetCredentialCommand command);
 
     /**
-     * Creates or replaces the credential for the given Git provider group.
+     * Creates or replaces the API credential for the given Git provider group.
      * The plaintext secret in the command is encrypted before persisting.
      *
      * @param identifier the group to configure
@@ -54,6 +63,16 @@ public interface ManageGitCredentialsUseCase {
      * @return the persisted credential metadata (without the plaintext secret)
      */
     GitCredential setCredentialForGroup(GitProviderGroupIdentifier identifier, SetCredentialCommand command);
+
+    /**
+     * Creates or replaces the clone credential for the given Git provider group.
+     * The plaintext secret in the command is encrypted before persisting.
+     *
+     * @param identifier the group to configure
+     * @param command    the new credential data
+     * @return the persisted credential metadata (without the plaintext secret)
+     */
+    GitCredential setCloneCredentialForGroup(GitProviderGroupIdentifier identifier, SetCredentialCommand command);
 
     /**
      * Removes the credential for the given repository.
@@ -64,12 +83,20 @@ public interface ManageGitCredentialsUseCase {
     void removeCredentialForRepository(RepositoryIdentifier identifier);
 
     /**
-     * Removes the credential for the given Git provider group.
+     * Removes the API credential for the given Git provider group.
      * Does nothing if no credential is configured.
      *
      * @param identifier the group whose credential shall be removed
      */
     void removeCredentialForGroup(GitProviderGroupIdentifier identifier);
+
+    /**
+     * Removes the clone credential for the given Git provider group.
+     * Does nothing if no credential is configured.
+     *
+     * @param identifier the group whose clone credential shall be removed
+     */
+    void removeCloneCredentialForGroup(GitProviderGroupIdentifier identifier);
 
     /**
      * Returns the decrypted secret for the given repository, or empty if none is configured.
@@ -82,7 +109,7 @@ public interface ManageGitCredentialsUseCase {
     Optional<SecretValue> resolveRepositorySecret(RepositoryIdentifier identifier);
 
     /**
-     * Returns the decrypted secret for the given Git provider group, or empty if none is configured.
+     * Returns the decrypted API secret for the given Git provider group, or empty if none is configured.
      * This method is intended exclusively for the Git adapter and must never be called
      * from REST resources or any code path that could expose the value externally.
      *
@@ -90,6 +117,15 @@ public interface ManageGitCredentialsUseCase {
      * @return the plaintext secret, or empty
      */
     Optional<SecretValue> resolveGroupSecret(GitProviderGroupIdentifier identifier);
+
+    /**
+     * Returns the decrypted clone secret for the given Git provider group, or empty if none is configured.
+     * Falls back to the API secret if no separate clone credential is set.
+     *
+     * @param identifier the group whose clone secret is needed
+     * @return the plaintext secret, or empty
+     */
+    Optional<SecretValue> resolveGroupCloneSecret(GitProviderGroupIdentifier identifier);
 
     /**
      * Parameters for creating or replacing a Git credential.

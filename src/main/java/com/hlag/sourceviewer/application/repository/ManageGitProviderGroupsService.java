@@ -2,8 +2,10 @@ package com.hlag.sourceviewer.application.repository;
 
 import com.hlag.sourceviewer.domain.model.identifier.GitProviderGroupIdentifier;
 import com.hlag.sourceviewer.domain.model.repository.GitProviderGroup;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.GitProviderGroupStore;
+import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
@@ -24,10 +26,14 @@ public class ManageGitProviderGroupsService implements ManageGitProviderGroupsUs
     private static final Logger logger = LoggerFactory.getLogger(ManageGitProviderGroupsService.class);
 
     private final GitProviderGroupStore gitProviderGroupStore;
+    private final RepositoryStore repositoryStore;
 
     @Inject
-    public ManageGitProviderGroupsService(GitProviderGroupStore gitProviderGroupStore) {
+    public ManageGitProviderGroupsService(
+            GitProviderGroupStore gitProviderGroupStore,
+            RepositoryStore repositoryStore) {
         this.gitProviderGroupStore = gitProviderGroupStore;
+        this.repositoryStore = repositoryStore;
     }
 
     /** @inheritDoc */
@@ -85,5 +91,17 @@ public class ManageGitProviderGroupsService implements ManageGitProviderGroupsUs
     public void deleteGitProviderGroup(GitProviderGroupIdentifier identifier) {
         gitProviderGroupStore.delete(identifier);
         logger.info("Deleted Git provider group {}", identifier.value());
+    }
+
+    /** @inheritDoc */
+    @Override
+    public List<Repository> listGroupRepositories(GitProviderGroupIdentifier identifier) {
+        return repositoryStore.findByGroup(identifier);
+    }
+
+    /** @inheritDoc */
+    @Override
+    public long countGroupRepositories(GitProviderGroupIdentifier identifier) {
+        return repositoryStore.countByGroup(identifier);
     }
 }

@@ -15,9 +15,9 @@ import java.util.Optional;
 public interface ManageRepositoriesUseCase {
 
     /**
-     * Returns all configured repositories.
+     * Returns all manually configured repositories (excludes group-discovered repos).
      *
-     * @return unordered list of all repositories
+     * @return unordered list of manually managed repositories
      */
     List<Repository> listRepositories();
 

@@ -250,7 +250,12 @@
         <tbody class="divide-y divide-gray-100">
           <tr v-for="group in groups" :key="group.id" class="hover:bg-gray-50 transition-colors">
             <td class="px-6 py-4">
-              <span class="font-medium text-gray-900 text-sm">{{ group.name }}</span>
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-gray-900 text-sm">{{ group.name }}</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                  {{ group.repositoryCount }} {{ group.repositoryCount === 1 ? 'repo' : 'repos' }}
+                </span>
+              </div>
             </td>
             <td class="px-6 py-4">
               <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium"
@@ -300,18 +305,42 @@
                   Delete
                 </button>
                 <button
+                  @click="openGroupReposModal(group)"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  title="View repositories discovered from this group"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h8M8 8h4"/>
+                  </svg>
+                  Repos
+                </button>
+                <button
                   @click="openCredentialModal('group', group.id, group.name)"
                   class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-lg border"
                   :class="groupCredentials[group.id]
                     ? 'text-amber-700 bg-white border-amber-200 hover:bg-amber-50'
                     : 'text-gray-600 bg-white border-gray-300 hover:bg-gray-50'"
-                  :title="groupCredentials[group.id] ? 'Credential configured — click to update' : 'No credential — click to configure'"
+                  :title="groupCredentials[group.id] ? 'API credential configured — click to update' : 'No API credential — click to configure'"
                 >
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round"
                       d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
                   </svg>
-                  {{ groupCredentials[group.id] ? 'Credential ✓' : 'Credential' }}
+                  {{ groupCredentials[group.id] ? 'API Secret ✓' : 'API Secret' }}
+                </button>
+                <button
+                  @click="openCredentialModal('group-clone', group.id, group.name)"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-lg border"
+                  :class="groupCloneCredentials[group.id]
+                    ? 'text-amber-700 bg-white border-amber-200 hover:bg-amber-50'
+                    : 'text-gray-600 bg-white border-gray-300 hover:bg-gray-50'"
+                  :title="groupCloneCredentials[group.id] ? 'Clone credential configured — click to update' : 'No clone credential — falls back to API secret'"
+                >
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                  </svg>
+                  {{ groupCloneCredentials[group.id] ? 'Clone Secret ✓' : 'Clone Secret' }}
                 </button>
                 <button
                   @click="triggerScan('group', group.id)"
@@ -863,6 +892,13 @@
       @saved="handleGroupSaved"
     />
 
+    <GroupRepositoriesModal
+      v-if="showGroupReposModal && viewingReposGroup"
+      :group-id="viewingReposGroup.id"
+      :group-name="viewingReposGroup.name"
+      @close="closeGroupReposModal"
+    />
+
     <CredentialFormModal
       v-if="showCredentialModal"
       :entity-type="credentialEntityType"
@@ -899,7 +935,7 @@ import type { ScanJob } from '../types/scan-job'
 import type { AppSetting } from '../types/app-setting'
 import { listRepositories } from '../api/repositories'
 import { listGitProviderGroups, deleteGitProviderGroup } from '../api/git-provider-groups'
-import { getRepositoryCredential, getGroupCredential } from '../api/git-credentials'
+import { getRepositoryCredential, getGroupCredential, getGroupCloneCredential } from '../api/git-credentials'
 import { triggerRepositoryScan } from '../api/repositories'
 import { triggerGroupScan } from '../api/git-provider-groups'
 import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
@@ -909,6 +945,7 @@ import { listSettings, updateSetting } from '../api/settings'
 import RepositoryFormModal from '../components/RepositoryFormModal.vue'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.vue'
 import GitProviderGroupFormModal from '../components/GitProviderGroupFormModal.vue'
+import GroupRepositoriesModal from '../components/GroupRepositoriesModal.vue'
 import CredentialFormModal from '../components/CredentialFormModal.vue'
 import ServiceAccountFormModal from '../components/ServiceAccountFormModal.vue'
 import ServiceAccountTokensModal from '../components/ServiceAccountTokensModal.vue'
@@ -951,11 +988,17 @@ const editingGroup = ref<GitProviderGroup | undefined>(undefined)
 
 const repoCredentials = ref<Record<number, GitCredential | null>>({})
 const groupCredentials = ref<Record<number, GitCredential | null>>({})
+const groupCloneCredentials = ref<Record<number, GitCredential | null>>({})
 
 const showCredentialModal = ref(false)
-const credentialEntityType = ref<'repository' | 'group'>('repository')
+const credentialEntityType = ref<'repository' | 'group' | 'group-clone'>('repository')
 const credentialEntityId = ref(0)
 const credentialEntityName = ref('')
+
+// ── Group Repos Modal ─────────────────────────────────────────────────────────
+
+const showGroupReposModal = ref(false)
+const viewingReposGroup = ref<GitProviderGroup | undefined>(undefined)
 
 // ── Scan trigger ──────────────────────────────────────────────────────────────
 
@@ -1035,10 +1078,13 @@ function loadGroupCredentials() {
     getGroupCredential(group.id)
       .then(credential => { groupCredentials.value[group.id] = credential })
       .catch(() => { groupCredentials.value[group.id] = null })
+    getGroupCloneCredential(group.id)
+      .then(credential => { groupCloneCredentials.value[group.id] = credential })
+      .catch(() => { groupCloneCredentials.value[group.id] = null })
   })
 }
 
-function openCredentialModal(entityType: 'repository' | 'group', id: number, name: string) {
+function openCredentialModal(entityType: 'repository' | 'group' | 'group-clone', id: number, name: string) {
   credentialEntityType.value = entityType
   credentialEntityId.value = id
   credentialEntityName.value = name
@@ -1052,6 +1098,8 @@ function closeCredentialModal() {
 function handleCredentialSaved(credential: GitCredential) {
   if (credentialEntityType.value === 'repository') {
     repoCredentials.value[credentialEntityId.value] = credential
+  } else if (credentialEntityType.value === 'group-clone') {
+    groupCloneCredentials.value[credentialEntityId.value] = credential
   } else {
     groupCredentials.value[credentialEntityId.value] = credential
   }
@@ -1061,10 +1109,22 @@ function handleCredentialSaved(credential: GitCredential) {
 function handleCredentialRemoved() {
   if (credentialEntityType.value === 'repository') {
     repoCredentials.value[credentialEntityId.value] = null
+  } else if (credentialEntityType.value === 'group-clone') {
+    groupCloneCredentials.value[credentialEntityId.value] = null
   } else {
     groupCredentials.value[credentialEntityId.value] = null
   }
   closeCredentialModal()
+}
+
+function openGroupReposModal(group: GitProviderGroup) {
+  viewingReposGroup.value = group
+  showGroupReposModal.value = true
+}
+
+function closeGroupReposModal() {
+  showGroupReposModal.value = false
+  viewingReposGroup.value = undefined
 }
 
 function openAddRepoModal() {

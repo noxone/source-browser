@@ -358,7 +358,8 @@ class RepositoryResourceApiTest {
                 Optional.ofNullable(remoteUrl).map(FilePath::new),
                 new BranchName(defaultBranch),
                 lastScannedAt,
-                lastCommitSha
+                lastCommitSha,
+                Optional.empty()
         );
         try {
             var field = repo.getClass().getDeclaredField("id");

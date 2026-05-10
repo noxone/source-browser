@@ -32,7 +32,7 @@ public class ManageRepositoriesService implements ManageRepositoriesUseCase {
     /** @inheritDoc */
     @Override
     public List<Repository> listRepositories() {
-        return repositoryStore.findAll();
+        return repositoryStore.findAllManual();
     }
 
     /** @inheritDoc */
@@ -49,6 +49,7 @@ public class ManageRepositoriesService implements ManageRepositoriesUseCase {
                 command.name(),
                 command.remoteUrl(),
                 command.defaultBranch(),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty()
         );

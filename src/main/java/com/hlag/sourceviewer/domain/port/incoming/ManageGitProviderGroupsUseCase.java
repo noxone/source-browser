@@ -6,6 +6,7 @@ import com.hlag.sourceviewer.domain.model.identifier.GitProviderGroupIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.GitProviderType;
 import com.hlag.sourceviewer.domain.model.identifier.GroupPath;
 import com.hlag.sourceviewer.domain.model.repository.GitProviderGroup;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 
 import java.util.List;
 import java.util.Optional;
@@ -54,6 +55,22 @@ public interface ManageGitProviderGroupsUseCase {
      * @param identifier the identifier of the group to remove
      */
     void deleteGitProviderGroup(GitProviderGroupIdentifier identifier);
+
+    /**
+     * Returns all repositories that were discovered from the given group.
+     *
+     * @param identifier the group identifier
+     * @return list of repositories belonging to this group
+     */
+    List<Repository> listGroupRepositories(GitProviderGroupIdentifier identifier);
+
+    /**
+     * Returns the number of repositories auto-discovered from the given group.
+     *
+     * @param identifier the group identifier
+     * @return repository count
+     */
+    long countGroupRepositories(GitProviderGroupIdentifier identifier);
 
     /**
      * Parameters for creating a new Git provider group configuration.

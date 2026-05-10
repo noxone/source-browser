@@ -8,6 +8,7 @@ import com.hlag.sourceviewer.domain.model.repository.GitProviderGroup;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase.CreateGitProviderGroupCommand;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase.UpdateGitProviderGroupCommand;
 import com.hlag.sourceviewer.domain.port.outgoing.GitProviderGroupStore;
+import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -27,7 +28,7 @@ class ManageGitProviderGroupsServiceUnitTest {
     @BeforeEach
     void setUp() {
         store = mock(GitProviderGroupStore.class);
-        service = new ManageGitProviderGroupsService(store);
+        service = new ManageGitProviderGroupsService(store, mock(RepositoryStore.class));
     }
 
     // ── listGitProviderGroups ─────────────────────────────────────────────────

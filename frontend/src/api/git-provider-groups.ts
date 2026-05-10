@@ -1,4 +1,5 @@
 import type { GitProviderGroup, CreateGitProviderGroupRequest, UpdateGitProviderGroupRequest } from '../types/git-provider-group'
+import type { Repository } from '../types/repository'
 import { authenticatedFetch } from './http'
 
 const BASE = '/api/git-provider-groups'
@@ -54,4 +55,8 @@ export async function triggerGroupScan(id: number): Promise<void> {
     const text = await response.text().catch(() => response.statusText)
     throw new Error(`HTTP ${response.status}: ${text}`)
   }
+}
+
+export async function listGroupRepositories(id: number): Promise<Repository[]> {
+  return handleResponse(await authenticatedFetch(`${BASE}/${id}/repositories`))
 }

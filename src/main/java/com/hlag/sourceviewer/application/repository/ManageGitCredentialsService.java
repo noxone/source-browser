@@ -54,6 +54,14 @@ public class ManageGitCredentialsService implements ManageGitCredentialsUseCase 
 
     /** @inheritDoc */
     @Override
+    public Optional<GitCredential> findCloneCredentialForGroup(GitProviderGroupIdentifier identifier) {
+        return gitCredentialStore.findByScope(
+                CredentialScopeType.GROUP_CLONE,
+                new CredentialScopeIdentifier(identifier.value()));
+    }
+
+    /** @inheritDoc */
+    @Override
     @Transactional
     public GitCredential setCredentialForRepository(RepositoryIdentifier identifier, SetCredentialCommand command) {
         return setCredential(
@@ -68,6 +76,16 @@ public class ManageGitCredentialsService implements ManageGitCredentialsUseCase 
     public GitCredential setCredentialForGroup(GitProviderGroupIdentifier identifier, SetCredentialCommand command) {
         return setCredential(
                 CredentialScopeType.GROUP,
+                new CredentialScopeIdentifier(identifier.value()),
+                command);
+    }
+
+    /** @inheritDoc */
+    @Override
+    @Transactional
+    public GitCredential setCloneCredentialForGroup(GitProviderGroupIdentifier identifier, SetCredentialCommand command) {
+        return setCredential(
+                CredentialScopeType.GROUP_CLONE,
                 new CredentialScopeIdentifier(identifier.value()),
                 command);
     }
@@ -94,7 +112,20 @@ public class ManageGitCredentialsService implements ManageGitCredentialsUseCase 
                         new CredentialScopeIdentifier(identifier.value()))
                 .ifPresent(credential -> {
                     gitCredentialStore.delete(credential.identifier());
-                    logger.info("Removed credential for group {}", identifier.value());
+                    logger.info("Removed API credential for group {}", identifier.value());
+                });
+    }
+
+    /** @inheritDoc */
+    @Override
+    @Transactional
+    public void removeCloneCredentialForGroup(GitProviderGroupIdentifier identifier) {
+        gitCredentialStore.findByScope(
+                        CredentialScopeType.GROUP_CLONE,
+                        new CredentialScopeIdentifier(identifier.value()))
+                .ifPresent(credential -> {
+                    gitCredentialStore.delete(credential.identifier());
+                    logger.info("Removed clone credential for group {}", identifier.value());
                 });
     }
 
@@ -114,6 +145,19 @@ public class ManageGitCredentialsService implements ManageGitCredentialsUseCase 
                         CredentialScopeType.GROUP,
                         new CredentialScopeIdentifier(identifier.value()))
                 .map(credential -> secretEncryptor.decrypt(credential.encryptedSecret()));
+    }
+
+    /** @inheritDoc */
+    @Override
+    public Optional<SecretValue> resolveGroupCloneSecret(GitProviderGroupIdentifier identifier) {
+        // Prefer the dedicated clone credential; fall back to the API credential.
+        var cloneCredential = gitCredentialStore.findByScope(
+                CredentialScopeType.GROUP_CLONE,
+                new CredentialScopeIdentifier(identifier.value()));
+        if (cloneCredential.isPresent()) {
+            return cloneCredential.map(c -> secretEncryptor.decrypt(c.encryptedSecret()));
+        }
+        return resolveGroupSecret(identifier);
     }
 
     private GitCredential setCredential(

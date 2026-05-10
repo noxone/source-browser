@@ -8,6 +8,7 @@ export interface GitProviderGroup {
   baseUrl: string | null
   archivedOmitted: boolean
   forkedOmitted: boolean
+  repositoryCount: number
 }
 
 export interface CreateGitProviderGroupRequest {

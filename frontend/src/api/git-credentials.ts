@@ -61,9 +61,37 @@ export async function setGroupCredential(
   )
 }
 
-/** Removes the credential for the given Git provider group. */
+/** Removes the API credential for the given Git provider group. */
 export async function deleteGroupCredential(groupId: number): Promise<void> {
   return handleResponse(
     await authenticatedFetch(`/api/git-provider-groups/${groupId}/credential`, { method: 'DELETE' })
+  )
+}
+
+/** Returns the clone credential metadata for the given Git provider group, or null if none is configured. */
+export async function getGroupCloneCredential(groupId: number): Promise<GitCredential | null> {
+  const response = await authenticatedFetch(`/api/git-provider-groups/${groupId}/clone-credential`)
+  if (response.status === 404) return null
+  return handleResponse<GitCredential>(response)
+}
+
+/** Creates or replaces the clone credential for the given Git provider group. */
+export async function setGroupCloneCredential(
+  groupId: number,
+  request: SetCredentialRequest
+): Promise<GitCredential> {
+  return handleResponse(
+    await authenticatedFetch(`/api/git-provider-groups/${groupId}/clone-credential`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request)
+    })
+  )
+}
+
+/** Removes the clone credential for the given Git provider group. */
+export async function deleteGroupCloneCredential(groupId: number): Promise<void> {
+  return handleResponse(
+    await authenticatedFetch(`/api/git-provider-groups/${groupId}/clone-credential`, { method: 'DELETE' })
   )
 }

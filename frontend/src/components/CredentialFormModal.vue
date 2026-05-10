@@ -142,11 +142,12 @@ import { ref, onMounted } from 'vue'
 import type { GitCredential } from '../types/git-credential'
 import {
   getRepositoryCredential, setRepositoryCredential, deleteRepositoryCredential,
-  getGroupCredential, setGroupCredential, deleteGroupCredential
+  getGroupCredential, setGroupCredential, deleteGroupCredential,
+  getGroupCloneCredential, setGroupCloneCredential, deleteGroupCloneCredential
 } from '../api/git-credentials'
 
 const props = defineProps<{
-  entityType: 'repository' | 'group'
+  entityType: 'repository' | 'group' | 'group-clone'
   entityId: number
   entityName: string
 }>()
@@ -169,9 +170,13 @@ const form = ref({
 
 onMounted(async () => {
   try {
-    existingCredential.value = props.entityType === 'repository'
-      ? await getRepositoryCredential(props.entityId)
-      : await getGroupCredential(props.entityId)
+    if (props.entityType === 'repository') {
+      existingCredential.value = await getRepositoryCredential(props.entityId)
+    } else if (props.entityType === 'group-clone') {
+      existingCredential.value = await getGroupCloneCredential(props.entityId)
+    } else {
+      existingCredential.value = await getGroupCredential(props.entityId)
+    }
     if (existingCredential.value?.description) {
       form.value.description = existingCredential.value.description
     }
@@ -190,9 +195,14 @@ async function handleSave() {
       description: form.value.description.trim() || null,
       secret: form.value.secret
     }
-    const saved = props.entityType === 'repository'
-      ? await setRepositoryCredential(props.entityId, request)
-      : await setGroupCredential(props.entityId, request)
+    let saved: import('../types/git-credential').GitCredential
+    if (props.entityType === 'repository') {
+      saved = await setRepositoryCredential(props.entityId, request)
+    } else if (props.entityType === 'group-clone') {
+      saved = await setGroupCloneCredential(props.entityId, request)
+    } else {
+      saved = await setGroupCredential(props.entityId, request)
+    }
     emit('saved', saved)
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'An unexpected error occurred.'
@@ -208,6 +218,8 @@ async function handleRemove() {
   try {
     if (props.entityType === 'repository') {
       await deleteRepositoryCredential(props.entityId)
+    } else if (props.entityType === 'group-clone') {
+      await deleteGroupCloneCredential(props.entityId)
     } else {
       await deleteGroupCredential(props.entityId)
     }

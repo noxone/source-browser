@@ -10,6 +10,7 @@ package com.hlag.sourceviewer.adapter.incoming.rest.dto;
  * @param baseUrl         optional base URL for self-hosted provider instances, may be null
  * @param archivedOmitted {@code true} if archived repositories are excluded from indexing
  * @param forkedOmitted   {@code true} if forked repositories are excluded from indexing
+ * @param repositoryCount number of repositories currently discovered from this group
  */
 public record GitProviderGroupDto(
         Long id,
@@ -18,5 +19,6 @@ public record GitProviderGroupDto(
         String groupPath,
         String baseUrl,
         boolean archivedOmitted,
-        boolean forkedOmitted
+        boolean forkedOmitted,
+        long repositoryCount
 ) {}

@@ -8,6 +8,9 @@ public enum CredentialScopeType {
     /** The credential belongs to a single Git repository. */
     REPOSITORY,
 
-    /** The credential belongs to a Git provider group (e.g. a GitLab group or GitHub organization). */
-    GROUP
+    /** The API credential for a Git provider group — used for provider API calls (repo discovery). */
+    GROUP,
+
+    /** The clone credential for a Git provider group — used for cloning/fetching discovered repos. */
+    GROUP_CLONE
 }

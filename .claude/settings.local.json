@@ -9,7 +9,9 @@
       "Bash(mvn compiler:compile -q)",
       "Bash(java *)",
       "Bash(mvn clean *)",
-      "WebFetch(domain:quarkus.io)"
+      "WebFetch(domain:quarkus.io)",
+      "Bash(grep -E \"\\\\.\\(kt|java|py|ts|go|sql|yaml|yml\\)$\")",
+      "Bash(npx vue-tsc *)"
     ]
   }
 }
