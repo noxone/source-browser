@@ -32,4 +32,17 @@ public interface GitAccess {
      * Reads the content of a file at a specific commit.
      */
     String readFileContent(Repository repository, FilePath path, CommitSha commitSha);
+
+    /**
+     * Ensures the repository is cloned locally and on the default branch, ready
+     * for file access operations.
+     *
+     * <p>If the repository has not been cloned yet, it is cloned from
+     * {@link Repository#remoteUrl()}. If it is already present on disk, the
+     * default branch is checked out and the latest changes are fetched from
+     * {@code origin}.</p>
+     *
+     * @throws IllegalStateException if no remote URL is configured
+     */
+    void prepareRepository(Repository repository);
 }

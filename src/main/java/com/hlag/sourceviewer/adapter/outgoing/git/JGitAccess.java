@@ -2,11 +2,17 @@ package com.hlag.sourceviewer.adapter.outgoing.git;
 
 import com.hlag.sourceviewer.domain.model.identifier.BranchName;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
+import com.hlag.sourceviewer.domain.model.identifier.CredentialScopeIdentifier;
+import com.hlag.sourceviewer.domain.model.identifier.CredentialScopeType;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
+import com.hlag.sourceviewer.domain.port.outgoing.GitCredentialStore;
+import com.hlag.sourceviewer.domain.port.outgoing.SecretEncryptor;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.lib.ObjectId;
@@ -16,6 +22,7 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevTree;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
@@ -25,8 +32,11 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 @ApplicationScoped
 public class JGitAccess implements GitAccess {
@@ -34,13 +44,68 @@ public class JGitAccess implements GitAccess {
     private static final Logger logger = LoggerFactory.getLogger(JGitAccess.class);
 
     @ConfigProperty(name = "sourceviewer.repos.base-path")
-    String reposBasePath;
+    Optional<String> reposBasePath;
+
+    @Inject
+    GitCredentialStore gitCredentialStore;
+
+    @Inject
+    SecretEncryptor secretEncryptor;
+
+    @Override
+    public void prepareRepository(Repository repository) {
+        String remoteUrl = repository.remoteUrl()
+                .map(FilePath::value)
+                .orElseThrow(() -> new IllegalStateException(
+                        "Repository '" + repository.name().value() + "' has no remote URL configured"));
+
+        String defaultBranch = repository.defaultBranch().value();
+        Path repoDir = resolveRepoDir(repository);
+        Optional<UsernamePasswordCredentialsProvider> credentials = credentialsForRepository(repository);
+
+        try {
+            if (repoDir.resolve(".git").toFile().isDirectory()) {
+                logger.info("Repository '{}' already cloned at {}, updating to origin/{}",
+                        repository.name().value(), repoDir, defaultBranch);
+                try (org.eclipse.jgit.lib.Repository gitRepository = openGitRepository(repository)) {
+                    try (Git git = new Git(gitRepository)) {
+                        git.checkout().setName(defaultBranch).call();
+                        var fetchCommand = git.fetch().setRemote("origin");
+                        credentials.ifPresent(fetchCommand::setCredentialsProvider);
+                        fetchCommand.call();
+                        git.reset()
+                                .setMode(ResetCommand.ResetType.HARD)
+                                .setRef("origin/" + defaultBranch)
+                                .call();
+                    }
+                }
+                logger.info("Repository '{}' updated successfully", repository.name().value());
+            } else {
+                logger.info("Cloning repository '{}' from {} into {}",
+                        repository.name().value(), remoteUrl, repoDir);
+                var cloneCommand = Git.cloneRepository()
+                        .setURI(remoteUrl)
+                        .setDirectory(repoDir.toFile())
+                        .setBranch(defaultBranch);
+                credentials.ifPresent(cloneCommand::setCredentialsProvider);
+                try (Git ignored = cloneCommand.call()) {
+                    // closed immediately; subsequent access uses openGitRepository
+                }
+                logger.info("Repository '{}' cloned successfully", repository.name().value());
+            }
+        } catch (IOException | GitAPIException exception) {
+            throw new GitAccessException(
+                    "Failed to prepare repository '" + repository.name().value() + "'", exception);
+        }
+    }
 
     @Override
     public CommitSha fetchRemoteHeadSha(Repository repository, BranchName branch) {
         try (org.eclipse.jgit.lib.Repository gitRepository = openGitRepository(repository)) {
             try (Git git = new Git(gitRepository)) {
-                git.fetch().setRemote("origin").call();
+                var fetchCommand = git.fetch().setRemote("origin");
+                credentialsForRepository(repository).ifPresent(fetchCommand::setCredentialsProvider);
+                fetchCommand.call();
             } catch (GitAPIException exception) {
                 logger.warn("Fetch failed for {}, falling back to local refs: {}",
                         repository.name().value(), exception.getMessage());
@@ -106,12 +171,58 @@ public class JGitAccess implements GitAccess {
     }
 
     private org.eclipse.jgit.lib.Repository openGitRepository(Repository repository) throws IOException {
-        File repoDir = new File(reposBasePath, repository.name().value());
+        File repoDir = resolveRepoDir(repository).toFile();
         return new FileRepositoryBuilder()
                 .setGitDir(new File(repoDir, ".git"))
                 .readEnvironment()
                 .findGitDir()
                 .build();
+    }
+
+    private Path resolveRepoDir(Repository repository) {
+        return resolveReposDir().resolve(localDirName(repository));
+    }
+
+    private Path resolveReposDir() {
+        return reposBasePath
+                .filter(s -> !s.isBlank())
+                .map(Path::of)
+                .orElse(Path.of(System.getProperty("java.io.tmpdir"), "sourceviewer-repos"));
+    }
+
+    private String localDirName(Repository repository) {
+        String id = "repo-" + repository.identifier().value();
+        return repository.remoteUrl()
+                .map(url -> id + "-" + sanitizedRemotePath(url.value()))
+                .orElse(id);
+    }
+
+    private String sanitizedRemotePath(String remoteUrl) {
+        try {
+            String path = URI.create(remoteUrl).getPath();
+            if (path.endsWith(".git")) {
+                path = path.substring(0, path.length() - 4);
+            }
+            // Replace every non-alphanumeric character with '-', collapse runs, trim edges
+            return path.replaceAll("[^A-Za-z0-9]+", "-").replaceAll("^-|-$", "");
+        } catch (Exception exception) {
+            // Fall back to a safe hash-free name if the URL is not parseable as a URI
+            return remoteUrl.replaceAll("[^A-Za-z0-9]+", "-").replaceAll("^-|-$", "");
+        }
+    }
+
+    private Optional<UsernamePasswordCredentialsProvider> credentialsForRepository(Repository repository) {
+        if (repository.identifier() == null) {
+            return Optional.empty();
+        }
+        return gitCredentialStore
+                .findByScope(
+                        CredentialScopeType.REPOSITORY,
+                        new CredentialScopeIdentifier(repository.identifier().value()))
+                .map(credential -> {
+                    String secret = secretEncryptor.decrypt(credential.encryptedSecret()).value();
+                    return new UsernamePasswordCredentialsProvider("oauth2", secret);
+                });
     }
 
     private AbstractTreeIterator prepareTreeParser(

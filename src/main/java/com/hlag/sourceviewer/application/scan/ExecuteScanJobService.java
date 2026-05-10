@@ -6,6 +6,7 @@ import com.hlag.sourceviewer.domain.model.identifier.TokenCount;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
 import com.hlag.sourceviewer.domain.port.incoming.ExecuteScanJobUseCase;
+import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -33,13 +34,16 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
 
     private final ScanJobRepository scanJobRepository;
     private final RepositoryStore repositoryStore;
+    private final GitAccess gitAccess;
 
     @Inject
     public ExecuteScanJobService(
             ScanJobRepository scanJobRepository,
-            RepositoryStore repositoryStore) {
+            RepositoryStore repositoryStore,
+            GitAccess gitAccess) {
         this.scanJobRepository = scanJobRepository;
         this.repositoryStore = repositoryStore;
+        this.gitAccess = gitAccess;
     }
 
     /**
@@ -149,6 +153,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 job.identifier().value(),
                 job.triggerType(),
                 job.commitSha().map(sha -> sha.value()).orElse("HEAD"));
+
+        gitAccess.prepareRepository(repository);
 
         // TODO (1): Fetch the target commit SHA and determine changed files
         //   CommitSha targetSha = job.commitSha().orElseGet(() -> gitAccess.fetchRemoteHeadSha(repository, repository.defaultBranch()));
