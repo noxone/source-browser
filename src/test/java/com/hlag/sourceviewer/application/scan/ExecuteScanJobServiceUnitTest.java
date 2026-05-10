@@ -6,6 +6,7 @@ import com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.TokenCount;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
+import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,13 +28,15 @@ class ExecuteScanJobServiceUnitTest {
 
     private ScanJobRepository scanJobRepository;
     private RepositoryStore repositoryStore;
+    private GitAccess gitAccess;
     private ExecuteScanJobService service;
 
     @BeforeEach
     void setUp() {
         scanJobRepository = mock(ScanJobRepository.class);
         repositoryStore = mock(RepositoryStore.class);
-        service = new ExecuteScanJobService(scanJobRepository, repositoryStore);
+        gitAccess = mock(GitAccess.class);
+        service = new ExecuteScanJobService(scanJobRepository, repositoryStore, gitAccess);
     }
 
     // ── tryExecuteNextJob — no job available ──────────────────────────────────
