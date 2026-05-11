@@ -20,6 +20,12 @@ public interface ManageAppSettingsUseCase {
     /** Default value for {@link #SETTING_SCAN_MAX_PARALLEL_JOBS}. */
     String DEFAULT_SCAN_MAX_PARALLEL_JOBS = "2";
 
+    /** Number of files processed per batch during a scan (each batch runs in its own transaction). */
+    String SETTING_SCAN_BATCH_SIZE = "scan.batch-size";
+
+    /** Default value for {@link #SETTING_SCAN_BATCH_SIZE}. */
+    String DEFAULT_SCAN_BATCH_SIZE = "200";
+
     // ── Operations ────────────────────────────────────────────────────────────
 
     /**

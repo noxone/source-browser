@@ -6,6 +6,7 @@ import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.*;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
@@ -66,4 +67,9 @@ public interface GitAccess {
      * @throws IllegalStateException if no remote URL is configured
      */
     void prepareRepository(Repository repository);
+
+    /**
+     * Returns the local filesystem path where the repository is checked out.
+     */
+    Path getLocalPath(Repository repository);
 }

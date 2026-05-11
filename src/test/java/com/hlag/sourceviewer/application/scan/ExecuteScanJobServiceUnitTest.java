@@ -11,6 +11,9 @@ import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
+import com.hlag.sourceviewer.domain.port.incoming.ManageAppSettingsUseCase;
+import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
 import jakarta.transaction.TransactionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,10 @@ class ExecuteScanJobServiceUnitTest {
     private SourceFileRepository sourceFileRepository;
     private DocumentRepository documentRepository;
     private TransactionManager transactionManager;
+    private JavaFileParser javaFileParser;
+    private SymbolRepository symbolRepository;
+    private SymbolReferenceRepository symbolReferenceRepository;
+    private ManageAppSettingsUseCase manageAppSettings;
     private ExecuteScanJobService service;
 
     @BeforeEach
@@ -45,7 +52,19 @@ class ExecuteScanJobServiceUnitTest {
         sourceFileRepository = mock(SourceFileRepository.class);
         documentRepository = mock(DocumentRepository.class);
         transactionManager = mock(TransactionManager.class);
-        service = new ExecuteScanJobService(scanJobRepository, repositoryStore, gitAccess, sourceFileRepository, documentRepository, transactionManager);
+        javaFileParser = mock(JavaFileParser.class);
+        symbolRepository = mock(SymbolRepository.class);
+        symbolReferenceRepository = mock(SymbolReferenceRepository.class);
+        manageAppSettings = mock(ManageAppSettingsUseCase.class);
+        when(manageAppSettings.getSetting(
+                ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
+                ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE))
+                .thenReturn(ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE);
+        service = new ExecuteScanJobService(
+                scanJobRepository, repositoryStore, gitAccess,
+                sourceFileRepository, documentRepository, transactionManager,
+                javaFileParser, symbolRepository, symbolReferenceRepository,
+                manageAppSettings);
     }
 
     // ── tryExecuteNextJob — no job available ──────────────────────────────────

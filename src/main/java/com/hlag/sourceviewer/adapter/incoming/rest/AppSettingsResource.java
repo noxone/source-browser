@@ -30,14 +30,19 @@ public class AppSettingsResource {
     /** Descriptions for all known settings, shown in the UI. */
     private static final Map<String, String> DESCRIPTIONS = Map.of(
             ManageAppSettingsUseCase.SETTING_SCAN_MAX_PARALLEL_JOBS,
-            "Maximum number of scan jobs executed concurrently per application instance"
+            "Maximum number of scan jobs executed concurrently per application instance",
+            ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
+            "Number of files processed per batch during a scan (each batch runs in its own transaction)"
     );
 
     /** Known settings with their default values, in display order. */
     private static final List<KnownSetting> KNOWN_SETTINGS = List.of(
             new KnownSetting(
                     ManageAppSettingsUseCase.SETTING_SCAN_MAX_PARALLEL_JOBS,
-                    ManageAppSettingsUseCase.DEFAULT_SCAN_MAX_PARALLEL_JOBS)
+                    ManageAppSettingsUseCase.DEFAULT_SCAN_MAX_PARALLEL_JOBS),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
+                    ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE)
     );
 
     private record KnownSetting(String key, String defaultValue) {}

@@ -1,23 +1,33 @@
 package com.hlag.sourceviewer.application.scan;
 
+import com.github.javaparser.resolution.TypeSolver;
 import com.hlag.sourceviewer.domain.model.identifier.BranchName;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.ErrorMessage;
+import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
+import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
 import com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier;
+import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
+import com.hlag.sourceviewer.domain.model.identifier.SymbolIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.TokenCount;
 import com.hlag.sourceviewer.domain.model.repository.ContentSha;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.Document;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
 import com.hlag.sourceviewer.domain.model.source.SourceFile;
+import com.hlag.sourceviewer.domain.model.source.Symbol;
+import com.hlag.sourceviewer.domain.model.source.SymbolReference;
 import com.hlag.sourceviewer.domain.port.incoming.ExecuteScanJobUseCase;
+import com.hlag.sourceviewer.domain.port.incoming.ManageAppSettingsUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.DocumentRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.InvalidTransactionException;
@@ -30,10 +40,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
@@ -58,7 +68,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ExecuteScanJobService implements ExecuteScanJobUseCase {
 
     private static final Logger logger = LoggerFactory.getLogger(ExecuteScanJobService.class);
-    private static final int BATCH_SIZE = 200;
 
     private final ScanJobRepository scanJobRepository;
     private final RepositoryStore repositoryStore;
@@ -66,6 +75,10 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
     private final SourceFileRepository sourceFileRepository;
     private final DocumentRepository documentRepository;
     private final TransactionManager transactionManager;
+    private final JavaFileParser javaFileParser;
+    private final SymbolRepository symbolRepository;
+    private final SymbolReferenceRepository symbolReferenceRepository;
+    private final ManageAppSettingsUseCase manageAppSettings;
 
     @Inject
     public ExecuteScanJobService(
@@ -74,13 +87,21 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             GitAccess gitAccess,
             SourceFileRepository sourceFileRepository,
             DocumentRepository documentRepository,
-            TransactionManager transactionManager) {
+            TransactionManager transactionManager,
+            JavaFileParser javaFileParser,
+            SymbolRepository symbolRepository,
+            SymbolReferenceRepository symbolReferenceRepository,
+            ManageAppSettingsUseCase manageAppSettings) {
         this.scanJobRepository = scanJobRepository;
         this.repositoryStore = repositoryStore;
         this.gitAccess = gitAccess;
         this.sourceFileRepository = sourceFileRepository;
         this.documentRepository = documentRepository;
         this.transactionManager = transactionManager;
+        this.javaFileParser = javaFileParser;
+        this.symbolRepository = symbolRepository;
+        this.symbolReferenceRepository = symbolReferenceRepository;
+        this.manageAppSettings = manageAppSettings;
     }
 
     /**
@@ -222,12 +243,30 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                             }));
         }
 
+        Path repoLocalPath = gitAccess.getLocalPath(repository);
+        TypeSolver typeSolver = javaFileParser.buildTypeSolver(repoLocalPath);
+
+        int currentBatchSize = Integer.parseInt(manageAppSettings.getSetting(
+                ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
+                ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE));
         int indexed = 0;
-        for (List<FilePath> batch : partition(toIndex, BATCH_SIZE)) {
+        int i = 0;
+        while (i < toIndex.size()) {
+            List<FilePath> batch = toIndex.subList(i, Math.min(i + currentBatchSize, toIndex.size()));
             AtomicInteger batchCount = new AtomicInteger(0);
-            runInNewTransaction(() ->
-                    batchCount.set(indexBatch(batch, job, repository, targetSha, branch)));
-            indexed += batchCount.get();
+            try {
+                runInNewTransaction(() ->
+                        batchCount.set(indexBatch(batch, job, repository, targetSha, branch, typeSolver)));
+                indexed += batchCount.get();
+                i += batch.size();
+            } catch (RuntimeException e) {
+                if (batch.size() <= 1) {
+                    throw e;
+                }
+                currentBatchSize = Math.max(1, currentBatchSize / 2);
+                logger.warn("Batch of {} files timed out for repository '{}' — reducing batch size to {} and retrying",
+                        batch.size(), repository.name().value(), currentBatchSize);
+            }
         }
 
         runInNewTransaction(() ->
@@ -240,7 +279,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
     }
 
     private int indexBatch(List<FilePath> batch, ScanJob job, Repository repository,
-                           CommitSha targetSha, BranchName branch) {
+                           CommitSha targetSha, BranchName branch, TypeSolver typeSolver) {
         int indexed = 0;
         for (FilePath path : batch) {
             try {
@@ -249,6 +288,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                     logger.debug("Skipping binary file: {}", path.value());
                     continue;
                 }
+                logger.debug("Working on: {}", path.value());
                 String content = contentOpt.get();
                 var contentSha = new ContentSha(sha256(content));
 
@@ -268,6 +308,11 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                                         Instant.now())));
 
                 documentRepository.insertUnpublished(new Document(fileId, "source", content, job.identifier().value()));
+
+                if (path.value().endsWith(".java")) {
+                    indexSymbols(fileId, path, content, typeSolver);
+                }
+
                 indexed++;
             } catch (Exception e) {
                 if (isTransactionRollbackPending()) {
@@ -280,6 +325,29 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             }
         }
         return indexed;
+    }
+
+    private void indexSymbols(FileIdentifier fileId, FilePath path, String content, TypeSolver typeSolver) {
+        symbolRepository.deleteByFile(fileId);
+        symbolReferenceRepository.deleteByFile(fileId);
+
+        var parsed = javaFileParser.parse(fileId, path, content, typeSolver);
+
+        parsed.declarations().forEach(symbolRepository::insert);
+
+        for (var ref : parsed.references()) {
+            Optional<SymbolIdentifier> symId = ref.resolvedName()
+                    .flatMap(qn -> symbolRepository.findByQualifiedName(qn))
+                    .map(Symbol::identifier);
+
+            Optional<SimpleName> nameToStore = symId.isPresent()
+                    ? Optional.empty()
+                    : ref.resolvedName().map(qn -> new SimpleName(qn.value()))
+                            .or(ref::unresolvedName);
+
+            symbolReferenceRepository.insert(new SymbolReference(
+                    fileId, symId, nameToStore, ref.kind(), ref.line(), ref.column()));
+        }
     }
 
     private void activateDocuments(ScanJobIdentifier identifier, Repository repository, CommitSha targetSha) {
@@ -344,13 +412,5 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 not available", e);
         }
-    }
-
-    private static <T> List<List<T>> partition(List<T> list, int size) {
-        List<List<T>> result = new ArrayList<>();
-        for (int i = 0; i < list.size(); i += size) {
-            result.add(list.subList(i, Math.min(i + size, list.size())));
-        }
-        return result;
     }
 }

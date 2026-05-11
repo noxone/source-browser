@@ -238,6 +238,11 @@ public class JGitAccess implements GitAccess {
                 .build();
     }
 
+    @Override
+    public Path getLocalPath(Repository repository) {
+        return resolveRepoDir(repository);
+    }
+
     private Path resolveRepoDir(Repository repository) {
         return resolveReposDir().resolve(localDirName(repository));
     }
