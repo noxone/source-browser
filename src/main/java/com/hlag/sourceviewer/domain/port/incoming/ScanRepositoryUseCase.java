@@ -21,6 +21,7 @@ public interface ScanRepositoryUseCase {
     record ScanCommand(
             RepositoryIdentifier repositoryIdentifier,
             java.util.Optional<CommitSha> commitSha,
-            ScanJob.TriggerType triggerType
+            ScanJob.TriggerType triggerType,
+            boolean forceFullReindex
     ) {}
 }

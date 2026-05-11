@@ -207,7 +207,8 @@ class ScanJobResourceApiTest {
                 Optional.empty(),
                 Optional.empty(),
                 new TokenCount(0),
-                Optional.empty()
+                Optional.empty(),
+                false
         );
         setId(job, id);
         return job;

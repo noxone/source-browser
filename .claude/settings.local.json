@@ -14,7 +14,8 @@
       "Bash(npx vue-tsc *)",
       "Read(//private/tmp/**)",
       "Bash(jar xf *)",
-      "Bash(javap -p 'org/gitlab4j/api/models/ImportStatus$Status.class')"
+      "Bash(javap -p 'org/gitlab4j/api/models/ImportStatus$Status.class')",
+      "Bash(mvn test-compile *)"
     ]
   }
 }

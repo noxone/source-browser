@@ -6,9 +6,12 @@ import com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.TokenCount;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
+import com.hlag.sourceviewer.domain.port.outgoing.DocumentRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
+import jakarta.transaction.TransactionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +32,9 @@ class ExecuteScanJobServiceUnitTest {
     private ScanJobRepository scanJobRepository;
     private RepositoryStore repositoryStore;
     private GitAccess gitAccess;
+    private SourceFileRepository sourceFileRepository;
+    private DocumentRepository documentRepository;
+    private TransactionManager transactionManager;
     private ExecuteScanJobService service;
 
     @BeforeEach
@@ -36,7 +42,10 @@ class ExecuteScanJobServiceUnitTest {
         scanJobRepository = mock(ScanJobRepository.class);
         repositoryStore = mock(RepositoryStore.class);
         gitAccess = mock(GitAccess.class);
-        service = new ExecuteScanJobService(scanJobRepository, repositoryStore, gitAccess);
+        sourceFileRepository = mock(SourceFileRepository.class);
+        documentRepository = mock(DocumentRepository.class);
+        transactionManager = mock(TransactionManager.class);
+        service = new ExecuteScanJobService(scanJobRepository, repositoryStore, gitAccess, sourceFileRepository, documentRepository, transactionManager);
     }
 
     // ── tryExecuteNextJob — no job available ──────────────────────────────────
@@ -69,10 +78,29 @@ class ExecuteScanJobServiceUnitTest {
         boolean result = service.tryExecuteNextJob();
 
         assertThat(result).isTrue();
-        // After tryExecuteNextJob completes, the job should be DONE (markDone ran after performScan)
         assertThat(job.status()).isEqualTo(ScanJob.ScanJobStatus.DONE);
         assertThat(job.startedAt()).isPresent();
         assertThat(job.finishedAt()).isPresent();
+    }
+
+    @Test
+    void tryExecuteNextJob_activates_documents_after_successful_scan() {
+        var job = queuedJob(10L, 99L);
+        var repo = mock(Repository.class);
+
+        when(scanJobRepository.pollNextQueued()).thenReturn(Optional.of(job));
+        when(repositoryStore.findByIdentifier(new RepositoryIdentifier(99L)))
+                .thenReturn(Optional.of(repo));
+        when(repo.name()).thenReturn(new com.hlag.sourceviewer.domain.model.identifier.DisplayName("my-repo"));
+        doNothing().when(scanJobRepository).update(any());
+        when(scanJobRepository.findByIdentifier(new ScanJobIdentifier(10L)))
+                .thenReturn(Optional.of(job));
+
+        service.tryExecuteNextJob();
+
+        verify(documentRepository).publishByScanJob(10L);
+        verify(documentRepository).deleteSupersededDocuments(10L);
+        verify(documentRepository, never()).deleteUnpublishedByScanJob(anyLong());
     }
 
     // ── tryExecuteNextJob — failure path ──────────────────────────────────────
@@ -93,6 +121,23 @@ class ExecuteScanJobServiceUnitTest {
         assertThat(result).isTrue();
         assertThat(job.status()).isEqualTo(ScanJob.ScanJobStatus.FAILED);
         assertThat(job.errorMessage()).isPresent();
+    }
+
+    @Test
+    void tryExecuteNextJob_cleans_up_unpublished_documents_on_failure() {
+        var job = queuedJob(11L, 55L);
+
+        when(scanJobRepository.pollNextQueued()).thenReturn(Optional.of(job));
+        when(repositoryStore.findByIdentifier(new RepositoryIdentifier(55L)))
+                .thenReturn(Optional.empty());
+        doNothing().when(scanJobRepository).update(any());
+        when(scanJobRepository.findByIdentifier(new ScanJobIdentifier(11L)))
+                .thenReturn(Optional.of(job));
+
+        service.tryExecuteNextJob();
+
+        verify(documentRepository).deleteUnpublishedByScanJob(11L);
+        verify(documentRepository, never()).publishByScanJob(anyLong());
     }
 
     @Test
@@ -150,7 +195,8 @@ class ExecuteScanJobServiceUnitTest {
                 Optional.empty(),
                 Optional.empty(),
                 new TokenCount(0),
-                Optional.empty()
+                Optional.empty(),
+                false
         );
         setId(job, id);
         return job;

@@ -55,6 +55,9 @@ public class ScanJob {
     @Column(name = "error_message")
     private ErrorMessage errorMessage;
 
+    @Column(name = "force_full_reindex", nullable = false)
+    private boolean forceFullReindex;
+
     protected ScanJob() {}
 
     public ScanJob(
@@ -66,7 +69,8 @@ public class ScanJob {
             Optional<Instant> startedAt,
             Optional<Instant> finishedAt,
             TokenCount filesScanned,
-            Optional<ErrorMessage> errorMessage) {
+            Optional<ErrorMessage> errorMessage,
+            boolean forceFullReindex) {
         this.repositoryIdentifier = repositoryIdentifier;
         this.triggerType = triggerType;
         this.commitSha = commitSha.orElse(null);
@@ -76,6 +80,7 @@ public class ScanJob {
         this.finishedAt = finishedAt.orElse(null);
         this.filesScanned = filesScanned;
         this.errorMessage = errorMessage.orElse(null);
+        this.forceFullReindex = forceFullReindex;
     }
 
     public ScanJobIdentifier identifier() { return id != null ? new ScanJobIdentifier(id) : null; }
@@ -88,6 +93,7 @@ public class ScanJob {
     public Optional<Instant> finishedAt() { return Optional.ofNullable(finishedAt); }
     public TokenCount filesScanned() { return filesScanned; }
     public Optional<ErrorMessage> errorMessage() { return Optional.ofNullable(errorMessage); }
+    public boolean forceFullReindex() { return forceFullReindex; }
 
     public void setStatus(ScanJobStatus status) { this.status = status; }
     public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }

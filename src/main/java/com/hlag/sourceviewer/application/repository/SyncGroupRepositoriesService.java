@@ -4,7 +4,7 @@ import com.hlag.sourceviewer.domain.model.identifier.BranchName;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.GitProviderGroupIdentifier;
-import com.hlag.sourceviewer.domain.model.repository.DiscoveredRepository;
+import com.hlag.sourceviewer.domain.model.repository.DiscoveredRepo;
 import com.hlag.sourceviewer.domain.model.repository.GitProviderGroup;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase;
@@ -63,13 +63,13 @@ public class SyncGroupRepositoriesService implements SyncGroupRepositoriesUseCas
                         "No API credential configured for group: " + identifier.value()));
 
         logger.info("Syncing repositories for group '{}' (id={})", group.groupPath().value(), identifier.value());
-        List<DiscoveredRepository> discovered = gitProviderGroupClient.discoverRepositories(group, apiSecret);
+        List<DiscoveredRepo> discovered = gitProviderGroupClient.discoverRepositories(group, apiSecret);
 
         List<Repository> existing = repositoryStore.findByGroup(identifier);
 
         int inserted = 0;
         int updated = 0;
-        for (DiscoveredRepository repo : discovered) {
+        for (DiscoveredRepo repo : discovered) {
             Optional<Repository> match = existing.stream()
                     .filter(r -> r.remoteUrl().map(u -> u.value().equals(repo.remoteUrl())).orElse(false))
                     .findFirst();
@@ -103,7 +103,7 @@ public class SyncGroupRepositoriesService implements SyncGroupRepositoriesUseCas
         }
 
         Set<String> activeUrls = discovered.stream()
-                .map(DiscoveredRepository::remoteUrl)
+                .map(DiscoveredRepo::remoteUrl)
                 .collect(Collectors.toSet());
         repositoryStore.deleteStaleGroupRepositories(identifier, activeUrls);
         int deleted = (int) existing.stream()

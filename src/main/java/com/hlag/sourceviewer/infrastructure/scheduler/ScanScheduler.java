@@ -82,7 +82,8 @@ public class ScanScheduler {
                             new ScanRepositoryUseCase.ScanCommand(
                                     repository.identifier(),
                                     Optional.of(remoteHeadSha),
-                                    ScanJob.TriggerType.CRON
+                                    ScanJob.TriggerType.CRON,
+                                    false
                             ));
                 }
             } catch (Exception exception) {

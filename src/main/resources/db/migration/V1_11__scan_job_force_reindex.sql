@@ -1,0 +1,2 @@
+ALTER TABLE scan_job
+    ADD COLUMN force_full_reindex BOOLEAN NOT NULL DEFAULT FALSE;

@@ -2,7 +2,7 @@ package com.hlag.sourceviewer.adapter.outgoing.gitlab;
 
 import com.hlag.sourceviewer.adapter.outgoing.git.GitAccessException;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
-import com.hlag.sourceviewer.domain.model.repository.DiscoveredRepository;
+import com.hlag.sourceviewer.domain.model.repository.DiscoveredRepo;
 import com.hlag.sourceviewer.domain.model.repository.GitProviderGroup;
 import com.hlag.sourceviewer.domain.port.outgoing.GitProviderGroupClient;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -21,7 +21,7 @@ import java.util.List;
 public class GitLabGroupClient implements GitProviderGroupClient {
 
     @Override
-    public List<DiscoveredRepository> discoverRepositories(GitProviderGroup group, String apiSecret) {
+    public List<DiscoveredRepo> discoverRepositories(GitProviderGroup group, String apiSecret) {
         String baseUrl = group.baseUrl().map(FilePath::value).orElse("https://gitlab.com");
         try (GitLabApi api = new GitLabApi(baseUrl, apiSecret)) {
             GroupProjectsFilter filter = buildProjectFilter(group);
@@ -29,7 +29,7 @@ public class GitLabGroupClient implements GitProviderGroupClient {
             return projects.stream()
                     .filter(p -> !group.isForkedOmitted() || p.getForkedFromProject() == null)
                     .filter(p -> !group.isImportedOmitted() || p.getImportUrl() == null)
-                    .map(p -> new DiscoveredRepository(
+                    .map(p -> new DiscoveredRepo(
                             p.getName(),
                             p.getHttpUrlToRepo(),
                             p.getDefaultBranch() != null ? p.getDefaultBranch() : "main"

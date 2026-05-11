@@ -163,7 +163,8 @@ class ManageScanJobsServiceUnitTest {
                         ? Optional.of(Instant.now()) : Optional.empty(),
                 new TokenCount(0),
                 status == ScanJob.ScanJobStatus.FAILED
-                        ? Optional.of(new ErrorMessage("error")) : Optional.empty()
+                        ? Optional.of(new ErrorMessage("error")) : Optional.empty(),
+                false
         );
         setId(job, id);
         return job;

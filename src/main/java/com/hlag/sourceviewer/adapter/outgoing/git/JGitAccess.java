@@ -148,7 +148,51 @@ public class JGitAccess implements GitAccess {
     }
 
     @Override
-    public String readFileContent(Repository repository, FilePath path, CommitSha commitSha) {
+    public List<FilePath> listAllFiles(Repository repository, CommitSha commitSha) {
+        try (org.eclipse.jgit.lib.Repository gitRepository = openGitRepository(repository)) {
+            ObjectId commitId = gitRepository.resolve(commitSha.value());
+            try (RevWalk revWalk = new RevWalk(gitRepository)) {
+                RevCommit commit = revWalk.parseCommit(commitId);
+                try (TreeWalk treeWalk = new TreeWalk(gitRepository)) {
+                    treeWalk.addTree(commit.getTree());
+                    treeWalk.setRecursive(true);
+                    List<FilePath> paths = new java.util.ArrayList<>();
+                    while (treeWalk.next()) {
+                        paths.add(new FilePath(treeWalk.getPathString()));
+                    }
+                    return paths;
+                }
+            }
+        } catch (IOException exception) {
+            throw new GitAccessException(
+                    "Failed to list all files in repository " + repository.name().value(), exception);
+        }
+    }
+
+    @Override
+    public List<FilePath> deletedFilesBetween(
+            Repository repository, CommitSha fromCommitSha, CommitSha toCommitSha) {
+        try (org.eclipse.jgit.lib.Repository gitRepository = openGitRepository(repository)) {
+            try (Git git = new Git(gitRepository)) {
+                AbstractTreeIterator oldTree = prepareTreeParser(gitRepository, fromCommitSha.value());
+                AbstractTreeIterator newTree = prepareTreeParser(gitRepository, toCommitSha.value());
+                return git.diff()
+                        .setOldTree(oldTree)
+                        .setNewTree(newTree)
+                        .call()
+                        .stream()
+                        .filter(entry -> entry.getChangeType() == DiffEntry.ChangeType.DELETE)
+                        .map(entry -> new FilePath(entry.getOldPath()))
+                        .toList();
+            }
+        } catch (IOException | GitAPIException exception) {
+            throw new GitAccessException(
+                    "Failed to compute deleted files for repository " + repository.name().value(), exception);
+        }
+    }
+
+    @Override
+    public Optional<String> readFileContent(Repository repository, FilePath path, CommitSha commitSha) {
         try (org.eclipse.jgit.lib.Repository gitRepository = openGitRepository(repository)) {
             ObjectId commitId = gitRepository.resolve(commitSha.value());
             try (RevWalk revWalk = new RevWalk(gitRepository)) {
@@ -161,13 +205,23 @@ public class JGitAccess implements GitAccess {
                     }
                     ObjectId blobId = treeWalk.getObjectId(0);
                     byte[] bytes = gitRepository.open(blobId).getBytes();
-                    return new String(bytes, StandardCharsets.UTF_8);
+                    if (containsNullByte(bytes)) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(new String(bytes, StandardCharsets.UTF_8));
                 }
             }
         } catch (IOException exception) {
             throw new GitAccessException(
                     "Failed to read file " + path.value() + " from " + repository.name().value(), exception);
         }
+    }
+
+    private static boolean containsNullByte(byte[] bytes) {
+        for (byte b : bytes) {
+            if (b == 0) return true;
+        }
+        return false;
     }
 
     private org.eclipse.jgit.lib.Repository openGitRepository(Repository repository) throws IOException {

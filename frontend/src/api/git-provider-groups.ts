@@ -49,8 +49,9 @@ export async function deleteGitProviderGroup(id: number): Promise<void> {
   )
 }
 
-export async function triggerGroupScan(id: number): Promise<void> {
-  const response = await authenticatedFetch(`${BASE}/${id}/scan`, { method: 'POST' })
+export async function triggerGroupScan(id: number, force = false): Promise<void> {
+  const url = force ? `${BASE}/${id}/scan?force=true` : `${BASE}/${id}/scan`
+  const response = await authenticatedFetch(url, { method: 'POST' })
   if (!response.ok) {
     const text = await response.text().catch(() => response.statusText)
     throw new Error(`HTTP ${response.status}: ${text}`)

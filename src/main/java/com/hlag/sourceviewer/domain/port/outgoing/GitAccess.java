@@ -7,6 +7,7 @@ import com.hlag.sourceviewer.domain.model.identifier.*;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Port for accessing Git repositories.
@@ -30,8 +31,23 @@ public interface GitAccess {
 
     /**
      * Reads the content of a file at a specific commit.
+     * Returns {@link Optional#empty()} when the file is binary (contains null bytes)
+     * and should not be indexed as text.
      */
-    String readFileContent(Repository repository, FilePath path, CommitSha commitSha);
+    Optional<String> readFileContent(Repository repository, FilePath path, CommitSha commitSha);
+
+    /**
+     * Lists all file paths present in the repository tree at the given commit.
+     */
+    List<FilePath> listAllFiles(Repository repository, CommitSha commitSha);
+
+    /**
+     * Returns the file paths that were deleted between two commits.
+     */
+    List<FilePath> deletedFilesBetween(
+            Repository repository,
+            CommitSha fromCommitSha,
+            CommitSha toCommitSha);
 
     /**
      * Ensures the repository is cloned locally and on the default branch, ready

@@ -55,7 +55,8 @@ public class GitWebhookResource {
         var command = new ScanRepositoryUseCase.ScanCommand(
                 new RepositoryIdentifier(request.repositoryId()),
                 Optional.ofNullable(request.commitSha()).map(CommitSha::new),
-                ScanJob.TriggerType.MANUAL
+                ScanJob.TriggerType.MANUAL,
+                false
         );
 
         var scanJob = scanRepositoryUseCase.enqueueScan(command);

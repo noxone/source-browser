@@ -24,10 +24,12 @@ import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase.Se
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase.CreateGitProviderGroupCommand;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase.UpdateGitProviderGroupCommand;
+import com.hlag.sourceviewer.domain.port.incoming.ScanRepositoryUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.SyncGroupRepositoriesUseCase;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
@@ -35,6 +37,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -63,15 +66,18 @@ public class GitProviderGroupResource {
     private final ManageGitProviderGroupsUseCase manageGitProviderGroupsUseCase;
     private final ManageGitCredentialsUseCase manageGitCredentialsUseCase;
     private final SyncGroupRepositoriesUseCase syncGroupRepositoriesUseCase;
+    private final ScanRepositoryUseCase scanRepositoryUseCase;
 
     @Inject
     public GitProviderGroupResource(
             ManageGitProviderGroupsUseCase manageGitProviderGroupsUseCase,
             ManageGitCredentialsUseCase manageGitCredentialsUseCase,
-            SyncGroupRepositoriesUseCase syncGroupRepositoriesUseCase) {
+            SyncGroupRepositoriesUseCase syncGroupRepositoriesUseCase,
+            ScanRepositoryUseCase scanRepositoryUseCase) {
         this.manageGitProviderGroupsUseCase = manageGitProviderGroupsUseCase;
         this.manageGitCredentialsUseCase = manageGitCredentialsUseCase;
         this.syncGroupRepositoriesUseCase = syncGroupRepositoriesUseCase;
+        this.scanRepositoryUseCase = scanRepositoryUseCase;
     }
 
     /**
@@ -305,21 +311,32 @@ public class GitProviderGroupResource {
      */
     @POST
     @Path("/{id}/scan")
-    public Response triggerGroupScan(@PathParam("id") Long id) {
-        logger.info("Manual scan triggered for group {}", id);
+    public Response triggerGroupScan(
+            @PathParam("id") Long id,
+            @QueryParam("force") @DefaultValue("false") boolean force) {
+        logger.info("Manual scan triggered for group {} (force={})", id, force);
         var identifier = new GitProviderGroupIdentifier(id);
         manageGitProviderGroupsUseCase.findGitProviderGroup(identifier)
                 .orElseThrow(() -> new NotFoundException("Git provider group not found: " + id));
         try {
             syncGroupRepositoriesUseCase.syncGroup(identifier);
+            if (force) {
+                manageGitProviderGroupsUseCase.listGroupRepositories(identifier).forEach(repo ->
+                        scanRepositoryUseCase.enqueueScan(new ScanRepositoryUseCase.ScanCommand(
+                                repo.identifier(),
+                                java.util.Optional.empty(),
+                                com.hlag.sourceviewer.domain.model.source.ScanJob.TriggerType.MANUAL,
+                                true
+                        )));
+            }
             return Response.accepted().build();
         } catch (NoSuchElementException | IllegalStateException e) {
-            logger.warn("Group sync failed for group {}: {}", id, e.getMessage());
+            logger.warn("Group scan failed for group {}: {}", id, e.getMessage());
             return Response.status(Response.Status.BAD_GATEWAY)
                     .entity("{\"error\": \"" + e.getMessage() + "\"}")
                     .build();
         } catch (Exception e) {
-            logger.error("Group sync failed for group {}", id, e);
+            logger.error("Group scan failed for group {}", id, e);
             return Response.status(Response.Status.BAD_GATEWAY)
                     .entity("{\"error\": \"Provider API error: " + e.getMessage() + "\"}")
                     .build();

@@ -26,6 +26,7 @@ import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
+import jakarta.ws.rs.DefaultValue;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.POST;
@@ -33,6 +34,7 @@ import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -187,14 +189,17 @@ public class RepositoryResource {
      */
     @POST
     @Path("/{id}/scan")
-    public Response triggerRepositoryScan(@PathParam("id") Long id) {
-        logger.info("Manual scan triggered for repository {}", id);
+    public Response triggerRepositoryScan(
+            @PathParam("id") Long id,
+            @QueryParam("force") @DefaultValue("false") boolean force) {
+        logger.info("Manual scan triggered for repository {} (force={})", id, force);
         manageRepositoriesUseCase.findRepository(new RepositoryIdentifier(id))
                 .orElseThrow(() -> new NotFoundException("Repository not found: " + id));
         var command = new ScanRepositoryUseCase.ScanCommand(
                 new RepositoryIdentifier(id),
                 java.util.Optional.empty(),
-                ScanJob.TriggerType.MANUAL
+                ScanJob.TriggerType.MANUAL,
+                force
         );
         var scanJob = scanRepositoryUseCase.enqueueScan(command);
         return Response.accepted()

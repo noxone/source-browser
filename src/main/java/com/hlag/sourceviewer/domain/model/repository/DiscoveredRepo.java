@@ -7,4 +7,4 @@ package com.hlag.sourceviewer.domain.model.repository;
  * @param remoteUrl     HTTPS clone URL
  * @param defaultBranch default branch name reported by the provider
  */
-public record DiscoveredRepository(String name, String remoteUrl, String defaultBranch) {}
+public record DiscoveredRepo(String name, String remoteUrl, String defaultBranch) {}

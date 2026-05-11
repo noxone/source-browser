@@ -50,7 +50,8 @@ public class ScanRepositoryService implements ScanRepositoryUseCase {
                 Optional.empty(),
                 Optional.empty(),
                 new TokenCount(0),
-                Optional.empty()
+                Optional.empty(),
+                command.forceFullReindex()
         );
 
         scanJobRepository.insert(scanJob);

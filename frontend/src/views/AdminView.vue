@@ -152,24 +152,51 @@
                   </svg>
                   {{ repoCredentials[repo.id] ? 'Credential ✓' : 'Credential' }}
                 </button>
-                <button
-                  @click="triggerScan('repository', repo.id)"
-                  :disabled="isScanLoading('repository', repo.id)"
-                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-lg border disabled:opacity-50"
-                  :class="isScanQueued('repository', repo.id)
-                    ? 'text-green-700 bg-white border-green-200 hover:bg-green-50'
-                    : 'text-indigo-700 bg-white border-indigo-200 hover:bg-indigo-50'"
-                  title="Enqueue a manual scan for this repository"
-                >
-                  <svg v-if="isScanLoading('repository', repo.id)" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                  </svg>
-                  <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
-                  {{ isScanQueued('repository', repo.id) ? 'Queued ✓' : 'Scan' }}
-                </button>
+                <div class="relative inline-flex" @click.stop>
+                  <button
+                    @click="triggerScan('repository', repo.id)"
+                    :disabled="isScanLoading('repository', repo.id)"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-l-lg border-l border-t border-b disabled:opacity-50"
+                    :class="isScanQueued('repository', repo.id)
+                      ? 'text-green-700 bg-white border-green-200 hover:bg-green-50'
+                      : 'text-indigo-700 bg-white border-indigo-200 hover:bg-indigo-50'"
+                    title="Enqueue a manual scan for this repository"
+                  >
+                    <svg v-if="isScanLoading('repository', repo.id)" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                    </svg>
+                    <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    {{ isScanQueued('repository', repo.id) ? 'Queued ✓' : 'Scan' }}
+                  </button>
+                  <button
+                    @click="toggleScanDropdown('repository', repo.id)"
+                    :disabled="isScanLoading('repository', repo.id)"
+                    class="inline-flex items-center px-1.5 py-1.5 text-xs font-medium transition-colors rounded-r-lg border disabled:opacity-50"
+                    :class="isScanQueued('repository', repo.id)
+                      ? 'text-green-700 bg-white border-green-200 hover:bg-green-50'
+                      : 'text-indigo-700 bg-white border-indigo-200 hover:bg-indigo-50'"
+                  >
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </button>
+                  <div
+                    v-if="isScanDropdownOpen('repository', repo.id)"
+                    class="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
+                  >
+                    <button
+                      @click="triggerScan('repository', repo.id, false)"
+                      class="w-full text-left px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 rounded-t-lg"
+                    >Scan</button>
+                    <button
+                      @click="triggerScan('repository', repo.id, true)"
+                      class="w-full text-left px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 rounded-b-lg border-t border-gray-100"
+                    >Force Re-index</button>
+                  </div>
+                </div>
               </div>
             </td>
           </tr>
@@ -356,24 +383,51 @@
                   </svg>
                   {{ groupCloneCredentials[group.id] ? 'Clone Secret ✓' : 'Clone Secret' }}
                 </button>
-                <button
-                  @click="triggerScan('group', group.id)"
-                  :disabled="isScanLoading('group', group.id)"
-                  class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-lg border disabled:opacity-50"
-                  :class="isScanQueued('group', group.id)
-                    ? 'text-green-700 bg-white border-green-200 hover:bg-green-50'
-                    : 'text-indigo-700 bg-white border-indigo-200 hover:bg-indigo-50'"
-                  title="Enqueue a discovery scan for this group"
-                >
-                  <svg v-if="isScanLoading('group', group.id)" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                  </svg>
-                  <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
-                  {{ isScanQueued('group', group.id) ? 'Queued ✓' : 'Scan' }}
-                </button>
+                <div class="relative inline-flex" @click.stop>
+                  <button
+                    @click="triggerScan('group', group.id)"
+                    :disabled="isScanLoading('group', group.id)"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium transition-colors rounded-l-lg border-l border-t border-b disabled:opacity-50"
+                    :class="isScanQueued('group', group.id)
+                      ? 'text-green-700 bg-white border-green-200 hover:bg-green-50'
+                      : 'text-indigo-700 bg-white border-indigo-200 hover:bg-indigo-50'"
+                    title="Sync repositories from provider and discover new ones"
+                  >
+                    <svg v-if="isScanLoading('group', group.id)" class="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                    </svg>
+                    <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    {{ isScanQueued('group', group.id) ? 'Queued ✓' : 'Scan' }}
+                  </button>
+                  <button
+                    @click="toggleScanDropdown('group', group.id)"
+                    :disabled="isScanLoading('group', group.id)"
+                    class="inline-flex items-center px-1.5 py-1.5 text-xs font-medium transition-colors rounded-r-lg border disabled:opacity-50"
+                    :class="isScanQueued('group', group.id)
+                      ? 'text-green-700 bg-white border-green-200 hover:bg-green-50'
+                      : 'text-indigo-700 bg-white border-indigo-200 hover:bg-indigo-50'"
+                  >
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  </button>
+                  <div
+                    v-if="isScanDropdownOpen('group', group.id)"
+                    class="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10"
+                  >
+                    <button
+                      @click="triggerScan('group', group.id, false)"
+                      class="w-full text-left px-3 py-2 text-xs text-indigo-700 hover:bg-indigo-50 rounded-t-lg"
+                    >Sync repos</button>
+                    <button
+                      @click="triggerScan('group', group.id, true)"
+                      class="w-full text-left px-3 py-2 text-xs text-amber-700 hover:bg-amber-50 rounded-b-lg border-t border-gray-100"
+                    >Force Re-index all repos</button>
+                  </div>
+                </div>
               </div>
             </td>
           </tr>
@@ -939,7 +993,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import type { Repository } from '../types/repository'
 import type { GitProviderGroup } from '../types/git-provider-group'
 import type { GitCredential } from '../types/git-credential'
@@ -1018,6 +1072,7 @@ const viewingReposGroup = ref<GitProviderGroup | undefined>(undefined)
 
 const scanLoading = ref<Record<string, boolean>>({})
 const scanQueued = ref<Record<string, boolean>>({})
+const scanDropdownOpen = ref<Record<string, boolean>>({})
 
 function isScanLoading(entityType: 'repository' | 'group', id: number): boolean {
   return !!scanLoading.value[`${entityType}-${id}`]
@@ -1027,15 +1082,29 @@ function isScanQueued(entityType: 'repository' | 'group', id: number): boolean {
   return !!scanQueued.value[`${entityType}-${id}`]
 }
 
-async function triggerScan(entityType: 'repository' | 'group', id: number) {
+function isScanDropdownOpen(entityType: 'repository' | 'group', id: number): boolean {
+  return !!scanDropdownOpen.value[`${entityType}-${id}`]
+}
+
+function toggleScanDropdown(entityType: 'repository' | 'group', id: number) {
+  const key = `${entityType}-${id}`
+  scanDropdownOpen.value = { [key]: !scanDropdownOpen.value[key] }
+}
+
+function closeAllScanDropdowns() {
+  scanDropdownOpen.value = {}
+}
+
+async function triggerScan(entityType: 'repository' | 'group', id: number, force = false) {
+  closeAllScanDropdowns()
   const key = `${entityType}-${id}`
   scanLoading.value[key] = true
   scanQueued.value[key] = false
   try {
     if (entityType === 'repository') {
-      await triggerRepositoryScan(id)
+      await triggerRepositoryScan(id, force)
     } else {
-      await triggerGroupScan(id)
+      await triggerGroupScan(id, force)
     }
     scanQueued.value[key] = true
     setTimeout(() => { scanQueued.value[key] = false }, 3000)
@@ -1051,6 +1120,11 @@ onMounted(() => {
   fetchGroups()
   fetchUsers()
   fetchServiceAccounts()
+  document.addEventListener('click', closeAllScanDropdowns)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeAllScanDropdowns)
 })
 
 async function fetchRepositories() {

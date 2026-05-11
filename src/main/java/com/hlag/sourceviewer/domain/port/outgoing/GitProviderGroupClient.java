@@ -1,6 +1,6 @@
 package com.hlag.sourceviewer.domain.port.outgoing;
 
-import com.hlag.sourceviewer.domain.model.repository.DiscoveredRepository;
+import com.hlag.sourceviewer.domain.model.repository.DiscoveredRepo;
 import com.hlag.sourceviewer.domain.model.repository.GitProviderGroup;
 
 import java.util.List;
@@ -18,5 +18,5 @@ public interface GitProviderGroupClient {
      * @return list of discovered repositories
      * @throws RuntimeException if the provider API cannot be reached or returns an error
      */
-    List<DiscoveredRepository> discoverRepositories(GitProviderGroup group, String apiSecret);
+    List<DiscoveredRepo> discoverRepositories(GitProviderGroup group, String apiSecret);
 }
