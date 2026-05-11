@@ -66,6 +66,19 @@ public class ScanScheduler {
 
         repositoryStore.findAll().forEach(repository -> {
             try {
+                if (!gitAccess.localRepositoryExists(repository)) {
+                    logger.info("Repository '{}' not yet cloned locally, scheduling initial scan",
+                            repository.name().value());
+                    scanRepositoryUseCase.enqueueScan(
+                            new ScanRepositoryUseCase.ScanCommand(
+                                    repository.identifier(),
+                                    Optional.empty(),
+                                    ScanJob.TriggerType.CRON,
+                                    false
+                            ));
+                    return;
+                }
+
                 CommitSha remoteHeadSha = gitAccess.fetchRemoteHeadSha(
                         repository, repository.defaultBranch());
 

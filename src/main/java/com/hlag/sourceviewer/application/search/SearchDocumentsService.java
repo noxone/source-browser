@@ -4,9 +4,9 @@ import com.hlag.sourceviewer.domain.model.identifier.Description;
 import com.hlag.sourceviewer.domain.model.search.SearchQuery;
 import com.hlag.sourceviewer.domain.model.search.SearchResult;
 import com.hlag.sourceviewer.domain.port.incoming.SearchDocumentsUseCase;
+import com.hlag.sourceviewer.domain.port.outgoing.DocumentRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
-import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -15,36 +15,34 @@ import java.util.List;
 @ApplicationScoped
 public class SearchDocumentsService implements SearchDocumentsUseCase {
 
-    private final SymbolRepository symbolRepository;
+    private final DocumentRepository documentRepository;
     private final SourceFileRepository sourceFileRepository;
     private final RepositoryStore repositoryStore;
 
     @Inject
     public SearchDocumentsService(
-            SymbolRepository symbolRepository,
+            DocumentRepository documentRepository,
             SourceFileRepository sourceFileRepository,
             RepositoryStore repositoryStore) {
-        this.symbolRepository = symbolRepository;
+        this.documentRepository = documentRepository;
         this.sourceFileRepository = sourceFileRepository;
         this.repositoryStore = repositoryStore;
     }
 
     @Override
     public List<SearchResult> search(SearchQuery query) {
-        return symbolRepository.findBySimpleName(query.searchText())
+        return documentRepository.search(query.searchText().value(), query.maxResults(), query.offset())
                 .stream()
-                .skip(query.offset())
-                .limit(query.maxResults())
-                .flatMap(symbol -> sourceFileRepository.findByIdentifier(symbol.fileIdentifier())
+                .flatMap(match -> sourceFileRepository.findByIdentifier(match.fileIdentifier())
                         .stream()
                         .flatMap(sourceFile -> repositoryStore.findByIdentifier(sourceFile.repositoryIdentifier())
                                 .stream()
                                 .map(repository -> new SearchResult(
-                                        symbol.fileIdentifier(),
+                                        match.fileIdentifier(),
                                         sourceFile.path(),
                                         repository.name(),
-                                        new Description(symbol.qualifiedName().value()),
-                                        1.0
+                                        new Description(match.snippet()),
+                                        match.rank()
                                 ))))
                 .toList();
     }

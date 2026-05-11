@@ -1,12 +1,18 @@
 package com.hlag.sourceviewer.domain.port.outgoing;
 
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
+import com.hlag.sourceviewer.domain.model.search.DocumentSearchMatch;
 import com.hlag.sourceviewer.domain.model.source.Document;
+
+import java.util.List;
 
 /**
  * Port for persisting full-text search documents.
  */
 public interface DocumentRepository {
+
+    /** Performs a full-text search and returns ranked matches. */
+    List<DocumentSearchMatch> search(String text, int maxResults, int offset);
 
     /** Removes all document entries for the given file. */
     void deleteByFile(FileIdentifier fileIdentifier);

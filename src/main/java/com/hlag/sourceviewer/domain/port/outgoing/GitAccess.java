@@ -50,6 +50,11 @@ public interface GitAccess {
             CommitSha toCommitSha);
 
     /**
+     * Returns {@code true} when the repository has already been cloned to local disk.
+     */
+    boolean localRepositoryExists(Repository repository);
+
+    /**
      * Ensures the repository is cloned locally and on the default branch, ready
      * for file access operations.
      *

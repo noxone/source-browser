@@ -1,15 +1,45 @@
 package com.hlag.sourceviewer.adapter.outgoing.persistence;
 
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
+import com.hlag.sourceviewer.domain.model.search.DocumentSearchMatch;
 import com.hlag.sourceviewer.domain.model.source.Document;
 import com.hlag.sourceviewer.domain.port.outgoing.DocumentRepository;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
+import java.util.List;
+
 @ApplicationScoped
 public class PanacheDocumentRepository
         implements DocumentRepository, PanacheRepositoryBase<Document, Long> {
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<DocumentSearchMatch> search(String text, int maxResults, int offset) {
+        List<Object[]> rows = getEntityManager().createNativeQuery("""
+                SELECT d.file_id,
+                       ts_headline('english', d.content, plainto_tsquery('english', :text),
+                           'MaxWords=30,MinWords=10,MaxFragments=1') AS snippet,
+                       ts_rank(d.search_vector, plainto_tsquery('english', :text)) AS rank
+                FROM   document d
+                WHERE  d.published = true
+                  AND  d.search_vector @@ plainto_tsquery('english', :text)
+                ORDER  BY rank DESC
+                LIMIT  :limit OFFSET :offset
+                """)
+                .setParameter("text", text)
+                .setParameter("limit", maxResults)
+                .setParameter("offset", offset)
+                .getResultList();
+        return rows.stream()
+                .map(cols -> new DocumentSearchMatch(
+                        new FileIdentifier(((Number) cols[0]).longValue()),
+                        (String) cols[1],
+                        ((Number) cols[2]).doubleValue()))
+                .toList();
+    }
+
 
     @Override
     @Transactional

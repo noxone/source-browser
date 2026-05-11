@@ -53,6 +53,11 @@ public class JGitAccess implements GitAccess {
     SecretEncryptor secretEncryptor;
 
     @Override
+    public boolean localRepositoryExists(Repository repository) {
+        return resolveRepoDir(repository).resolve(".git").toFile().isDirectory();
+    }
+
+    @Override
     public void prepareRepository(Repository repository) {
         String remoteUrl = repository.remoteUrl()
                 .map(FilePath::value)
