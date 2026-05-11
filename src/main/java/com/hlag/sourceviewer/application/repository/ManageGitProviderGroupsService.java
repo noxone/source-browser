@@ -58,7 +58,9 @@ public class ManageGitProviderGroupsService implements ManageGitProviderGroupsUs
                 command.groupPath(),
                 command.baseUrl(),
                 command.archivedOmitted(),
-                command.forkedOmitted()
+                command.forkedOmitted(),
+                command.sharedOmitted(),
+                command.importedOmitted()
         );
         var identifier = gitProviderGroupStore.insert(group);
         logger.info("Created Git provider group '{}' with id {}", command.name().value(), identifier.value());
@@ -80,6 +82,8 @@ public class ManageGitProviderGroupsService implements ManageGitProviderGroupsUs
         group.setBaseUrl(command.baseUrl().orElse(null));
         group.setArchivedOmitted(command.archivedOmitted());
         group.setForkedOmitted(command.forkedOmitted());
+        group.setSharedOmitted(command.sharedOmitted());
+        group.setImportedOmitted(command.importedOmitted());
         gitProviderGroupStore.update(group);
         logger.info("Updated Git provider group {}", command.identifier().value());
         return group;

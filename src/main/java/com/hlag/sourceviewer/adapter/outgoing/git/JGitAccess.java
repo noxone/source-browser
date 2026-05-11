@@ -212,6 +212,19 @@ public class JGitAccess implements GitAccess {
     }
 
     private Optional<UsernamePasswordCredentialsProvider> credentialsForRepository(Repository repository) {
+        if (repository.isManagedByGroup()) {
+            return repository.sourceGroupIdentifier().flatMap(groupId -> {
+                // Try dedicated clone credential first, fall back to the API credential
+                var credential = gitCredentialStore
+                        .findByScope(CredentialScopeType.GROUP_CLONE, new CredentialScopeIdentifier(groupId.value()))
+                        .or(() -> gitCredentialStore
+                                .findByScope(CredentialScopeType.GROUP, new CredentialScopeIdentifier(groupId.value())));
+                return credential.map(c -> {
+                    String secret = secretEncryptor.decrypt(c.encryptedSecret()).value();
+                    return new UsernamePasswordCredentialsProvider("oauth2", secret);
+                });
+            });
+        }
         if (repository.identifier() == null) {
             return Optional.empty();
         }

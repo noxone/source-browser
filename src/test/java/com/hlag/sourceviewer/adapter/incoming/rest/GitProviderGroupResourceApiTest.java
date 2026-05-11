@@ -5,7 +5,9 @@ import com.hlag.sourceviewer.domain.model.identifier.GitProviderGroupIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.GitProviderType;
 import com.hlag.sourceviewer.domain.model.identifier.GroupPath;
 import com.hlag.sourceviewer.domain.model.repository.GitProviderGroup;
+import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase;
+import com.hlag.sourceviewer.domain.port.incoming.SyncGroupRepositoriesUseCase;
 import io.quarkus.test.InjectMock;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
@@ -55,6 +57,12 @@ class GitProviderGroupResourceApiTest {
 
     @InjectMock
     ManageGitProviderGroupsUseCase useCase;
+
+    @InjectMock
+    ManageGitCredentialsUseCase credentialsUseCase;
+
+    @InjectMock
+    SyncGroupRepositoriesUseCase syncUseCase;
 
     // ── GET /api/git-provider-groups ──────────────────────────────────────────
 
@@ -290,7 +298,9 @@ class GitProviderGroupResourceApiTest {
                 new GroupPath(path),
                 Optional.ofNullable(baseUrl).map(com.hlag.sourceviewer.domain.model.identifier.FilePath::new),
                 archivedOmitted,
-                forkedOmitted
+                forkedOmitted,
+                false,
+                false
         );
         try {
             var field = group.getClass().getDeclaredField("id");

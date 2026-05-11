@@ -8,6 +8,8 @@ export interface GitProviderGroup {
   baseUrl: string | null
   archivedOmitted: boolean
   forkedOmitted: boolean
+  sharedOmitted: boolean
+  importedOmitted: boolean
   repositoryCount: number
 }
 
@@ -18,6 +20,8 @@ export interface CreateGitProviderGroupRequest {
   baseUrl: string | null
   archivedOmitted: boolean
   forkedOmitted: boolean
+  sharedOmitted: boolean
+  importedOmitted: boolean
 }
 
 export interface UpdateGitProviderGroupRequest {
@@ -27,4 +31,6 @@ export interface UpdateGitProviderGroupRequest {
   baseUrl: string | null
   archivedOmitted: boolean
   forkedOmitted: boolean
+  sharedOmitted: boolean
+  importedOmitted: boolean
 }

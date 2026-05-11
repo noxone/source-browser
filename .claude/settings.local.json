@@ -11,7 +11,10 @@
       "Bash(mvn clean *)",
       "WebFetch(domain:quarkus.io)",
       "Bash(grep -E \"\\\\.\\(kt|java|py|ts|go|sql|yaml|yml\\)$\")",
-      "Bash(npx vue-tsc *)"
+      "Bash(npx vue-tsc *)",
+      "Read(//private/tmp/**)",
+      "Bash(jar xf *)",
+      "Bash(javap -p 'org/gitlab4j/api/models/ImportStatus$Status.class')"
     ]
   }
 }

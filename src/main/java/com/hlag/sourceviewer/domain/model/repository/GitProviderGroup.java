@@ -50,6 +50,12 @@ public class GitProviderGroup {
     @Column(name = "is_forked_omitted", nullable = false)
     private boolean forkedOmitted;
 
+    @Column(name = "is_shared_omitted", nullable = false)
+    private boolean sharedOmitted;
+
+    @Column(name = "is_imported_omitted", nullable = false)
+    private boolean importedOmitted;
+
     protected GitProviderGroup() {}
 
     /**
@@ -59,8 +65,10 @@ public class GitProviderGroup {
      * @param providerType    the Git hosting provider
      * @param groupPath       the group or organization path within the provider
      * @param baseUrl         optional base URL for self-hosted provider instances
-     * @param archivedOmitted {@code true} if archived repositories shall be excluded from indexing
-     * @param forkedOmitted   {@code true} if forked repositories shall be excluded from indexing
+     * @param archivedOmitted  {@code true} if archived repositories shall be excluded from indexing
+     * @param forkedOmitted    {@code true} if forked repositories shall be excluded from indexing
+     * @param sharedOmitted    {@code true} if repositories shared into this group shall be excluded (GitLab only)
+     * @param importedOmitted  {@code true} if imported repositories shall be excluded (GitLab only)
      */
     public GitProviderGroup(
             DisplayName name,
@@ -68,13 +76,17 @@ public class GitProviderGroup {
             GroupPath groupPath,
             Optional<FilePath> baseUrl,
             boolean archivedOmitted,
-            boolean forkedOmitted) {
+            boolean forkedOmitted,
+            boolean sharedOmitted,
+            boolean importedOmitted) {
         this.name = name;
         this.providerType = providerType;
         this.groupPath = groupPath;
         this.baseUrl = baseUrl.orElse(null);
         this.archivedOmitted = archivedOmitted;
         this.forkedOmitted = forkedOmitted;
+        this.sharedOmitted = sharedOmitted;
+        this.importedOmitted = importedOmitted;
     }
 
     /** Returns the unique identifier of this group configuration, or {@code null} before first persist. */
@@ -100,6 +112,12 @@ public class GitProviderGroup {
     /** Returns {@code true} if forked repositories shall be excluded from indexing. */
     public boolean isForkedOmitted() { return forkedOmitted; }
 
+    /** Returns {@code true} if repositories shared into this group shall be excluded (GitLab only). */
+    public boolean isSharedOmitted() { return sharedOmitted; }
+
+    /** Returns {@code true} if imported repositories shall be excluded (GitLab only). */
+    public boolean isImportedOmitted() { return importedOmitted; }
+
     /** Sets the human-readable display name. */
     public void setName(DisplayName name) { this.name = name; }
 
@@ -117,4 +135,10 @@ public class GitProviderGroup {
 
     /** Sets whether forked repositories shall be excluded from indexing. */
     public void setForkedOmitted(boolean forkedOmitted) { this.forkedOmitted = forkedOmitted; }
+
+    /** Sets whether repositories shared into this group shall be excluded (GitLab only). */
+    public void setSharedOmitted(boolean sharedOmitted) { this.sharedOmitted = sharedOmitted; }
+
+    /** Sets whether imported repositories shall be excluded (GitLab only). */
+    public void setImportedOmitted(boolean importedOmitted) { this.importedOmitted = importedOmitted; }
 }

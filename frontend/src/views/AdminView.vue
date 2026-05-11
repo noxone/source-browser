@@ -282,7 +282,21 @@
                 </svg>
                 Forked omitted
               </div>
-              <span v-if="!group.archivedOmitted && !group.forkedOmitted" class="text-gray-300 italic">None</span>
+              <template v-if="group.providerType === 'GITLAB'">
+                <div v-if="group.sharedOmitted" class="flex items-center gap-1">
+                  <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  Shared omitted
+                </div>
+                <div v-if="group.importedOmitted" class="flex items-center gap-1">
+                  <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                  </svg>
+                  Imported omitted
+                </div>
+              </template>
+              <span v-if="!group.archivedOmitted && !group.forkedOmitted && !(group.providerType === 'GITLAB' && (group.sharedOmitted || group.importedOmitted))" class="text-gray-300 italic">None</span>
             </td>
             <td class="px-6 py-4 text-right">
               <div class="inline-flex items-center gap-2">

@@ -24,6 +24,7 @@ import com.hlag.sourceviewer.domain.port.incoming.ManageGitCredentialsUseCase.Se
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase.CreateGitProviderGroupCommand;
 import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase.UpdateGitProviderGroupCommand;
+import com.hlag.sourceviewer.domain.port.incoming.SyncGroupRepositoriesUseCase;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.DELETE;
@@ -61,13 +62,16 @@ public class GitProviderGroupResource {
 
     private final ManageGitProviderGroupsUseCase manageGitProviderGroupsUseCase;
     private final ManageGitCredentialsUseCase manageGitCredentialsUseCase;
+    private final SyncGroupRepositoriesUseCase syncGroupRepositoriesUseCase;
 
     @Inject
     public GitProviderGroupResource(
             ManageGitProviderGroupsUseCase manageGitProviderGroupsUseCase,
-            ManageGitCredentialsUseCase manageGitCredentialsUseCase) {
+            ManageGitCredentialsUseCase manageGitCredentialsUseCase,
+            SyncGroupRepositoriesUseCase syncGroupRepositoriesUseCase) {
         this.manageGitProviderGroupsUseCase = manageGitProviderGroupsUseCase;
         this.manageGitCredentialsUseCase = manageGitCredentialsUseCase;
+        this.syncGroupRepositoriesUseCase = syncGroupRepositoriesUseCase;
     }
 
     /**
@@ -114,7 +118,9 @@ public class GitProviderGroupResource {
                 new GroupPath(request.groupPath()),
                 Optional.ofNullable(request.baseUrl()).filter(s -> !s.isBlank()).map(FilePath::new),
                 request.archivedOmitted(),
-                request.forkedOmitted()
+                request.forkedOmitted(),
+                request.sharedOmitted(),
+                request.importedOmitted()
         );
 
         var created = manageGitProviderGroupsUseCase.createGitProviderGroup(command);
@@ -145,7 +151,9 @@ public class GitProviderGroupResource {
                 new GroupPath(request.groupPath()),
                 Optional.ofNullable(request.baseUrl()).filter(s -> !s.isBlank()).map(FilePath::new),
                 request.archivedOmitted(),
-                request.forkedOmitted()
+                request.forkedOmitted(),
+                request.sharedOmitted(),
+                request.importedOmitted()
         );
 
         try {
@@ -288,22 +296,34 @@ public class GitProviderGroupResource {
     }
 
     /**
-     * Enqueues a manual discovery scan for the given Git provider group.
-     * Group-level discovery (importing repositories from the provider API) is not yet
-     * fully implemented; this endpoint validates the group exists and returns 202 Accepted
-     * as a placeholder for the future scan pipeline.
+     * Triggers a synchronisation of the repository list for the given Git provider group.
+     * Fetches the current list from the provider API and upserts results into the local store.
      *
      * @param id the group identifier
-     * @return 202 Accepted
+     * @return 202 Accepted on success, 502 Bad Gateway if the provider API call fails
      * @throws NotFoundException if the group does not exist
      */
     @POST
     @Path("/{id}/scan")
     public Response triggerGroupScan(@PathParam("id") Long id) {
         logger.info("Manual scan triggered for group {}", id);
-        manageGitProviderGroupsUseCase.findGitProviderGroup(new GitProviderGroupIdentifier(id))
+        var identifier = new GitProviderGroupIdentifier(id);
+        manageGitProviderGroupsUseCase.findGitProviderGroup(identifier)
                 .orElseThrow(() -> new NotFoundException("Git provider group not found: " + id));
-        return Response.accepted().build();
+        try {
+            syncGroupRepositoriesUseCase.syncGroup(identifier);
+            return Response.accepted().build();
+        } catch (NoSuchElementException | IllegalStateException e) {
+            logger.warn("Group sync failed for group {}: {}", id, e.getMessage());
+            return Response.status(Response.Status.BAD_GATEWAY)
+                    .entity("{\"error\": \"" + e.getMessage() + "\"}")
+                    .build();
+        } catch (Exception e) {
+            logger.error("Group sync failed for group {}", id, e);
+            return Response.status(Response.Status.BAD_GATEWAY)
+                    .entity("{\"error\": \"Provider API error: " + e.getMessage() + "\"}")
+                    .build();
+        }
     }
 
     private GitProviderGroupDto toDto(GitProviderGroup group) {
@@ -316,6 +336,8 @@ public class GitProviderGroupResource {
                 group.baseUrl().map(FilePath::value).orElse(null),
                 group.isArchivedOmitted(),
                 group.isForkedOmitted(),
+                group.isSharedOmitted(),
+                group.isImportedOmitted(),
                 repoCount
         );
     }

@@ -2,7 +2,9 @@ package com.hlag.sourceviewer.infrastructure.scheduler;
 
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
+import com.hlag.sourceviewer.domain.port.incoming.ManageGitProviderGroupsUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ScanRepositoryUseCase;
+import com.hlag.sourceviewer.domain.port.incoming.SyncGroupRepositoriesUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import io.quarkus.scheduler.Scheduled;
@@ -28,15 +30,34 @@ public class ScanScheduler {
     private final RepositoryStore repositoryStore;
     private final GitAccess gitAccess;
     private final ScanRepositoryUseCase scanRepositoryUseCase;
+    private final ManageGitProviderGroupsUseCase manageGitProviderGroupsUseCase;
+    private final SyncGroupRepositoriesUseCase syncGroupRepositoriesUseCase;
 
     @Inject
     public ScanScheduler(
             RepositoryStore repositoryStore,
             GitAccess gitAccess,
-            ScanRepositoryUseCase scanRepositoryUseCase) {
+            ScanRepositoryUseCase scanRepositoryUseCase,
+            ManageGitProviderGroupsUseCase manageGitProviderGroupsUseCase,
+            SyncGroupRepositoriesUseCase syncGroupRepositoriesUseCase) {
         this.repositoryStore = repositoryStore;
         this.gitAccess = gitAccess;
         this.scanRepositoryUseCase = scanRepositoryUseCase;
+        this.manageGitProviderGroupsUseCase = manageGitProviderGroupsUseCase;
+        this.syncGroupRepositoriesUseCase = syncGroupRepositoriesUseCase;
+    }
+
+    @Scheduled(cron = "0 0 2 * * ?", concurrentExecution = ConcurrentExecution.SKIP)
+    public void syncAllGroups() {
+        logger.info("Daily group sync started");
+        manageGitProviderGroupsUseCase.listGitProviderGroups().forEach(group -> {
+            try {
+                syncGroupRepositoriesUseCase.syncGroup(group.identifier());
+            } catch (Exception e) {
+                logger.error("Daily group sync failed for group '{}': {}",
+                        group.groupPath().value(), e.getMessage(), e);
+            }
+        });
     }
 
     @Scheduled(cron = "0 */15 * * * ?", concurrentExecution = ConcurrentExecution.SKIP)

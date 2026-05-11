@@ -126,6 +126,13 @@
             <version>${mapstruct.version}</version>
         </dependency>
 
+        <!-- ── GitLab4J ─────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>org.gitlab4j</groupId>
+            <artifactId>gitlab4j-api</artifactId>
+            <version>6.0.0</version>
+        </dependency>
+
         <!-- ── Annotation processors (compile-time only) ────────────── -->
         <dependency>
             <groupId>org.mapstruct</groupId>

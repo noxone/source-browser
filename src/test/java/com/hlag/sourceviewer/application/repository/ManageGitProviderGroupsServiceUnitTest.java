@@ -86,6 +86,8 @@ class ManageGitProviderGroupsServiceUnitTest {
                 new GroupPath("my-org/my-group"),
                 Optional.empty(),
                 true,
+                false,
+                false,
                 false
         );
         var identifier = new GitProviderGroupIdentifier(1L);
@@ -108,6 +110,8 @@ class ManageGitProviderGroupsServiceUnitTest {
                 GitProviderType.GITLAB,
                 new GroupPath("my-org"),
                 Optional.empty(),
+                false,
+                false,
                 false,
                 false
         );
@@ -135,7 +139,9 @@ class ManageGitProviderGroupsServiceUnitTest {
                 new GroupPath("updated-org"),
                 Optional.empty(),
                 true,
-                true
+                true,
+                false,
+                false
         );
 
         var result = service.updateGitProviderGroup(command);
@@ -159,6 +165,8 @@ class ManageGitProviderGroupsServiceUnitTest {
                 GitProviderType.GITLAB,
                 new GroupPath("x"),
                 Optional.empty(),
+                false,
+                false,
                 false,
                 false
         );
@@ -187,6 +195,8 @@ class ManageGitProviderGroupsServiceUnitTest {
                 new GroupPath("my-org/my-group"),
                 Optional.empty(),
                 true,
+                false,
+                false,
                 false
         );
     }

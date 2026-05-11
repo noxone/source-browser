@@ -75,12 +75,14 @@ public interface ManageGitProviderGroupsUseCase {
     /**
      * Parameters for creating a new Git provider group configuration.
      *
-     * @param name            human-readable display name, must be unique
-     * @param providerType    the Git hosting provider
-     * @param groupPath       the group or organization path within the provider
-     * @param baseUrl         optional base URL for self-hosted provider instances
-     * @param archivedOmitted whether archived repositories shall be excluded from indexing
-     * @param forkedOmitted   whether forked repositories shall be excluded from indexing
+     * @param name             human-readable display name, must be unique
+     * @param providerType     the Git hosting provider
+     * @param groupPath        the group or organization path within the provider
+     * @param baseUrl          optional base URL for self-hosted provider instances
+     * @param archivedOmitted  whether archived repositories shall be excluded from indexing
+     * @param forkedOmitted    whether forked repositories shall be excluded from indexing
+     * @param sharedOmitted    whether repos shared into this group shall be excluded (GitLab only)
+     * @param importedOmitted  whether imported repositories shall be excluded (GitLab only)
      */
     record CreateGitProviderGroupCommand(
             DisplayName name,
@@ -88,19 +90,23 @@ public interface ManageGitProviderGroupsUseCase {
             GroupPath groupPath,
             Optional<FilePath> baseUrl,
             boolean archivedOmitted,
-            boolean forkedOmitted
+            boolean forkedOmitted,
+            boolean sharedOmitted,
+            boolean importedOmitted
     ) {}
 
     /**
      * Parameters for updating an existing Git provider group configuration.
      *
-     * @param identifier      identifies the group to update
-     * @param name            new human-readable display name
-     * @param providerType    new Git hosting provider
-     * @param groupPath       new group or organization path within the provider
-     * @param baseUrl         new base URL, or empty to clear it
-     * @param archivedOmitted whether archived repositories shall be excluded from indexing
-     * @param forkedOmitted   whether forked repositories shall be excluded from indexing
+     * @param identifier       identifies the group to update
+     * @param name             new human-readable display name
+     * @param providerType     new Git hosting provider
+     * @param groupPath        new group or organization path within the provider
+     * @param baseUrl          new base URL, or empty to clear it
+     * @param archivedOmitted  whether archived repositories shall be excluded from indexing
+     * @param forkedOmitted    whether forked repositories shall be excluded from indexing
+     * @param sharedOmitted    whether repos shared into this group shall be excluded (GitLab only)
+     * @param importedOmitted  whether imported repositories shall be excluded (GitLab only)
      */
     record UpdateGitProviderGroupCommand(
             GitProviderGroupIdentifier identifier,
@@ -109,6 +115,8 @@ public interface ManageGitProviderGroupsUseCase {
             GroupPath groupPath,
             Optional<FilePath> baseUrl,
             boolean archivedOmitted,
-            boolean forkedOmitted
+            boolean forkedOmitted,
+            boolean sharedOmitted,
+            boolean importedOmitted
     ) {}
 }

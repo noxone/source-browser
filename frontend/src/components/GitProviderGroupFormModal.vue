@@ -86,6 +86,24 @@
             />
             Omit forked repositories
           </label>
+          <template v-if="form.providerType === 'GITLAB'">
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                v-model="form.sharedOmitted"
+                type="checkbox"
+                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Omit shared repositories
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+              <input
+                v-model="form.importedOmitted"
+                type="checkbox"
+                class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Omit imported repositories
+            </label>
+          </template>
         </div>
 
         <p v-if="errorMessage" class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -136,7 +154,9 @@ const form = ref({
   groupPath: '',
   baseUrl: '',
   archivedOmitted: false,
-  forkedOmitted: false
+  forkedOmitted: false,
+  sharedOmitted: false,
+  importedOmitted: false
 })
 
 const loading = ref(false)
@@ -150,6 +170,8 @@ onMounted(() => {
     form.value.baseUrl = props.group.baseUrl ?? ''
     form.value.archivedOmitted = props.group.archivedOmitted
     form.value.forkedOmitted = props.group.forkedOmitted
+    form.value.sharedOmitted = props.group.sharedOmitted
+    form.value.importedOmitted = props.group.importedOmitted
   }
 })
 
@@ -167,7 +189,9 @@ async function handleSubmit() {
         groupPath: form.value.groupPath.trim(),
         baseUrl,
         archivedOmitted: form.value.archivedOmitted,
-        forkedOmitted: form.value.forkedOmitted
+        forkedOmitted: form.value.forkedOmitted,
+        sharedOmitted: form.value.sharedOmitted,
+        importedOmitted: form.value.importedOmitted
       }
       const updated = await updateGitProviderGroup(props.group.id, request)
       emit('saved', updated)
@@ -178,7 +202,9 @@ async function handleSubmit() {
         groupPath: form.value.groupPath.trim(),
         baseUrl,
         archivedOmitted: form.value.archivedOmitted,
-        forkedOmitted: form.value.forkedOmitted
+        forkedOmitted: form.value.forkedOmitted,
+        sharedOmitted: form.value.sharedOmitted,
+        importedOmitted: form.value.importedOmitted
       }
       const created = await createGitProviderGroup(request)
       emit('saved', created)
