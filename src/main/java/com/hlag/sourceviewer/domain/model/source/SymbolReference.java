@@ -46,7 +46,18 @@ public class SymbolReference {
     @Column(name = "column_start")
     private ColumnNumber columnStart;
 
+    @Column(name = "scan_job_id")
+    private Long scanJobId;
+
+    @Column(name = "published", nullable = false)
+    private boolean published = true;
+
     protected SymbolReference() {}
+
+    public void markUnpublished(Long scanJobId) {
+        this.scanJobId = scanJobId;
+        this.published = false;
+    }
 
     public SymbolReference(
             FileIdentifier fileIdentifier,

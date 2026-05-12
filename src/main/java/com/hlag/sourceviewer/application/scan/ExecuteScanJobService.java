@@ -61,8 +61,9 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Indexing uses a two-phase approach to avoid transaction timeouts on large repositories:
  * files are indexed in small batches (each in its own transaction) with {@code published=false},
- * then atomically activated in a single final transaction. Readers always filter
- * {@code published=true} so they see either all-old or all-new documents, never a mix.</p>
+ * then atomically activated in a single final transaction. This applies to documents, symbols,
+ * and symbol references alike. Readers always filter {@code published=true} so they see either
+ * all-old or all-new data, never a mix from partially-completed scans.</p>
  */
 @ApplicationScoped
 public class ExecuteScanJobService implements ExecuteScanJobUseCase {
@@ -159,15 +160,20 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
     }
 
     /**
-     * Deletes all unpublished documents written by this scan job.
+     * Deletes all unpublished documents, symbols, and references written by this scan job.
      * Called on failure to prevent partially-indexed content from lingering.
+     * References are deleted before symbols to avoid unnecessary ON DELETE SET NULL cascades.
      */
     void cleanupOnFailure(ScanJobIdentifier identifier) {
         try {
-            runInNewTransaction(() ->
-                    documentRepository.deleteUnpublishedByScanJob(identifier.value()));
+            runInNewTransaction(() -> {
+                Long scanJobId = identifier.value();
+                symbolReferenceRepository.deleteUnpublishedByScanJob(scanJobId);
+                symbolRepository.deleteUnpublishedByScanJob(scanJobId);
+                documentRepository.deleteUnpublishedByScanJob(scanJobId);
+            });
         } catch (Exception e) {
-            logger.error("Failed to clean up unpublished documents for scan job {}", identifier.value(), e);
+            logger.error("Failed to clean up unpublished data for scan job {}", identifier.value(), e);
         }
     }
 
@@ -310,7 +316,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 documentRepository.insertUnpublished(new Document(fileId, "source", content, job.identifier().value()));
 
                 if (path.value().endsWith(".java")) {
-                    indexSymbols(fileId, path, content, typeSolver);
+                    indexSymbols(fileId, path, content, typeSolver, job.identifier().value());
                 }
 
                 indexed++;
@@ -327,17 +333,18 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         return indexed;
     }
 
-    private void indexSymbols(FileIdentifier fileId, FilePath path, String content, TypeSolver typeSolver) {
-        symbolRepository.deleteByFile(fileId);
-        symbolReferenceRepository.deleteByFile(fileId);
-
+    private void indexSymbols(FileIdentifier fileId, FilePath path, String content, TypeSolver typeSolver, Long scanJobId) {
+        // Old symbols/refs are not deleted here — they stay published until activateDocuments()
+        // removes them atomically after the full scan succeeds.
         var parsed = javaFileParser.parse(fileId, path, content, typeSolver);
 
-        parsed.declarations().forEach(symbolRepository::insert);
+        parsed.declarations().forEach(symbol -> symbolRepository.insertUnpublished(symbol, scanJobId));
 
         for (var ref : parsed.references()) {
+            // Prefer the newly inserted (unpublished) symbol for this scan job so that the
+            // reference survives activation with the correct new symbol ID.
             Optional<SymbolIdentifier> symId = ref.resolvedName()
-                    .flatMap(qn -> symbolRepository.findByQualifiedName(qn))
+                    .flatMap(qn -> symbolRepository.findByQualifiedNameForScan(qn, scanJobId))
                     .map(Symbol::identifier);
 
             Optional<SimpleName> nameToStore = symId.isPresent()
@@ -345,14 +352,20 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                     : ref.resolvedName().map(qn -> new SimpleName(qn.value()))
                             .or(ref::unresolvedName);
 
-            symbolReferenceRepository.insert(new SymbolReference(
-                    fileId, symId, nameToStore, ref.kind(), ref.line(), ref.column()));
+            symbolReferenceRepository.insertUnpublished(
+                    new SymbolReference(fileId, symId, nameToStore, ref.kind(), ref.line(), ref.column()),
+                    scanJobId);
         }
     }
 
     private void activateDocuments(ScanJobIdentifier identifier, Repository repository, CommitSha targetSha) {
-        documentRepository.publishByScanJob(identifier.value());
-        documentRepository.deleteSupersededDocuments(identifier.value());
+        Long scanJobId = identifier.value();
+        symbolRepository.publishByScanJob(scanJobId);
+        symbolReferenceRepository.publishByScanJob(scanJobId);
+        symbolRepository.deleteSupersededByScanJob(scanJobId);
+        symbolReferenceRepository.deleteSupersededByScanJob(scanJobId);
+        documentRepository.publishByScanJob(scanJobId);
+        documentRepository.deleteSupersededDocuments(scanJobId);
         repository.setLastCommitSha(targetSha);
         repository.setLastScannedAt(Instant.now());
         repositoryStore.update(repository);

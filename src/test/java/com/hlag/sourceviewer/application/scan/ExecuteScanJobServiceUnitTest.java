@@ -103,7 +103,7 @@ class ExecuteScanJobServiceUnitTest {
     }
 
     @Test
-    void tryExecuteNextJob_activates_documents_after_successful_scan() {
+    void tryExecuteNextJob_activates_symbols_and_documents_after_successful_scan() {
         var job = queuedJob(10L, 99L);
         var repo = mock(Repository.class);
 
@@ -117,8 +117,14 @@ class ExecuteScanJobServiceUnitTest {
 
         service.tryExecuteNextJob();
 
+        verify(symbolRepository).publishByScanJob(10L);
+        verify(symbolReferenceRepository).publishByScanJob(10L);
+        verify(symbolRepository).deleteSupersededByScanJob(10L);
+        verify(symbolReferenceRepository).deleteSupersededByScanJob(10L);
         verify(documentRepository).publishByScanJob(10L);
         verify(documentRepository).deleteSupersededDocuments(10L);
+        verify(symbolRepository, never()).deleteUnpublishedByScanJob(anyLong());
+        verify(symbolReferenceRepository, never()).deleteUnpublishedByScanJob(anyLong());
         verify(documentRepository, never()).deleteUnpublishedByScanJob(anyLong());
     }
 
@@ -143,7 +149,7 @@ class ExecuteScanJobServiceUnitTest {
     }
 
     @Test
-    void tryExecuteNextJob_cleans_up_unpublished_documents_on_failure() {
+    void tryExecuteNextJob_cleans_up_unpublished_symbols_and_documents_on_failure() {
         var job = queuedJob(11L, 55L);
 
         when(scanJobRepository.pollNextQueued()).thenReturn(Optional.of(job));
@@ -155,7 +161,11 @@ class ExecuteScanJobServiceUnitTest {
 
         service.tryExecuteNextJob();
 
+        verify(symbolReferenceRepository).deleteUnpublishedByScanJob(11L);
+        verify(symbolRepository).deleteUnpublishedByScanJob(11L);
         verify(documentRepository).deleteUnpublishedByScanJob(11L);
+        verify(symbolRepository, never()).publishByScanJob(anyLong());
+        verify(symbolReferenceRepository, never()).publishByScanJob(anyLong());
         verify(documentRepository, never()).publishByScanJob(anyLong());
     }
 

@@ -64,7 +64,18 @@ public class Symbol {
     @JdbcTypeCode(SqlTypes.JSON)
     private String extras;
 
+    @Column(name = "scan_job_id")
+    private Long scanJobId;
+
+    @Column(name = "published", nullable = false)
+    private boolean published = true;
+
     protected Symbol() {}
+
+    public void markUnpublished(Long scanJobId) {
+        this.scanJobId = scanJobId;
+        this.published = false;
+    }
 
     public Symbol(
             FileIdentifier fileIdentifier,
