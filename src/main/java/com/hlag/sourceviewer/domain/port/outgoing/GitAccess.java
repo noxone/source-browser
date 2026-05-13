@@ -72,4 +72,10 @@ public interface GitAccess {
      * Returns the local filesystem path where the repository is checked out.
      */
     Path getLocalPath(Repository repository);
+
+    /**
+     * Deletes the local clone of the repository from disk, if it exists.
+     * Does nothing when the repository has never been cloned locally.
+     */
+    void deleteLocalRepository(Repository repository);
 }

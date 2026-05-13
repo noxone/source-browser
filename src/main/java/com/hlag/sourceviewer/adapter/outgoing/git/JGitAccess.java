@@ -34,7 +34,9 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -241,6 +243,28 @@ public class JGitAccess implements GitAccess {
     @Override
     public Path getLocalPath(Repository repository) {
         return resolveRepoDir(repository);
+    }
+
+    @Override
+    public void deleteLocalRepository(Repository repository) {
+        Path repoDir = resolveRepoDir(repository);
+        if (!Files.exists(repoDir)) {
+            return;
+        }
+        try (var paths = Files.walk(repoDir)) {
+            paths.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            Files.delete(p);
+                        } catch (IOException e) {
+                            logger.warn("Could not delete {}: {}", p, e.getMessage());
+                        }
+                    });
+        } catch (IOException e) {
+            logger.warn("Failed to delete local repository directory {}: {}", repoDir, e.getMessage());
+            return;
+        }
+        logger.info("Deleted local repository directory {}", repoDir);
     }
 
     private Path resolveRepoDir(Repository repository) {

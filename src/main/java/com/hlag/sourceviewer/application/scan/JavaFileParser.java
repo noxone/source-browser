@@ -88,6 +88,14 @@ public class JavaFileParser {
      * Always includes a {@link ReflectionTypeSolver} for JDK and classpath library types.
      */
     public TypeSolver buildTypeSolver(Path repoLocalPath) {
+        return buildCombinedTypeSolver(repoLocalPath);
+    }
+
+    /**
+     * Same as {@link #buildTypeSolver} but returns the mutable {@link CombinedTypeSolver}
+     * so callers can append additional solvers (e.g. {@code JarTypeSolver} for Maven artifacts).
+     */
+    public CombinedTypeSolver buildCombinedTypeSolver(Path repoLocalPath) {
         var solver = new CombinedTypeSolver();
         solver.add(new ReflectionTypeSolver(false));
         List<Path> sourceRoots = findSourceRoots(repoLocalPath);

@@ -27,25 +27,42 @@ import java.util.Map;
 @RolesAllowed("admin")
 public class AppSettingsResource {
 
+    private static final String MASKED = "****";
+
     /** Descriptions for all known settings, shown in the UI. */
     private static final Map<String, String> DESCRIPTIONS = Map.of(
             ManageAppSettingsUseCase.SETTING_SCAN_MAX_PARALLEL_JOBS,
             "Maximum number of scan jobs executed concurrently per application instance",
             ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
-            "Number of files processed per batch during a scan (each batch runs in its own transaction)"
+            "Number of files processed per batch during a scan (each batch runs in its own transaction)",
+            ManageAppSettingsUseCase.SETTING_MAVEN_REPO_URL,
+            "URL of the Maven repository used for dependency resolution (defaults to Maven Central)",
+            ManageAppSettingsUseCase.SETTING_MAVEN_REPO_USERNAME,
+            "Username for authenticating against the configured Maven repository (leave empty for no authentication)",
+            ManageAppSettingsUseCase.SETTING_MAVEN_REPO_PASSWORD,
+            "Password / secret for authenticating against the configured Maven repository"
     );
 
     /** Known settings with their default values, in display order. */
     private static final List<KnownSetting> KNOWN_SETTINGS = List.of(
             new KnownSetting(
                     ManageAppSettingsUseCase.SETTING_SCAN_MAX_PARALLEL_JOBS,
-                    ManageAppSettingsUseCase.DEFAULT_SCAN_MAX_PARALLEL_JOBS),
+                    ManageAppSettingsUseCase.DEFAULT_SCAN_MAX_PARALLEL_JOBS, false),
             new KnownSetting(
                     ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
-                    ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE)
+                    ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_MAVEN_REPO_URL,
+                    ManageAppSettingsUseCase.DEFAULT_MAVEN_REPO_URL, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_MAVEN_REPO_USERNAME,
+                    ManageAppSettingsUseCase.DEFAULT_MAVEN_REPO_USERNAME, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_MAVEN_REPO_PASSWORD,
+                    ManageAppSettingsUseCase.DEFAULT_MAVEN_REPO_PASSWORD, true)
     );
 
-    private record KnownSetting(String key, String defaultValue) {}
+    private record KnownSetting(String key, String defaultValue, boolean secret) {}
 
     private final ManageAppSettingsUseCase manageAppSettingsUseCase;
 
@@ -61,9 +78,10 @@ public class AppSettingsResource {
     public List<AppSettingDto> listSettings() {
         return KNOWN_SETTINGS.stream()
                 .map(known -> {
-                    String value = manageAppSettingsUseCase.getSetting(known.key(), known.defaultValue());
+                    String stored = manageAppSettingsUseCase.getSetting(known.key(), known.defaultValue());
+                    String value = known.secret() && !stored.isEmpty() ? MASKED : stored;
                     String description = DESCRIPTIONS.getOrDefault(known.key(), "");
-                    return new AppSettingDto(known.key(), value, description);
+                    return new AppSettingDto(known.key(), value, description, known.secret());
                 })
                 .toList();
     }
@@ -82,11 +100,16 @@ public class AppSettingsResource {
             @PathParam("key") String key,
             AppSettingDto body) {
 
-        boolean knownKey = KNOWN_SETTINGS.stream().anyMatch(k -> k.key().equals(key));
-        if (!knownKey) {
+        KnownSetting known = KNOWN_SETTINGS.stream().filter(k -> k.key().equals(key)).findFirst().orElse(null);
+        if (known == null) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity("{\"error\": \"Unknown setting key: " + key + "\"}")
                     .build();
+        }
+
+        // Ignore the masked sentinel — the client is echoing back a value it cannot see
+        if (known.secret() && MASKED.equals(body.value())) {
+            return Response.noContent().build();
         }
 
         manageAppSettingsUseCase.setSetting(key, body.value());

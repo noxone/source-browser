@@ -1,5 +1,6 @@
 package com.hlag.sourceviewer.application.scan;
 
+import com.hlag.sourceviewer.application.scan.indexer.LanguageIndexerRegistry;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -38,10 +40,10 @@ class ExecuteScanJobServiceUnitTest {
     private SourceFileRepository sourceFileRepository;
     private DocumentRepository documentRepository;
     private TransactionManager transactionManager;
-    private JavaFileParser javaFileParser;
     private SymbolRepository symbolRepository;
     private SymbolReferenceRepository symbolReferenceRepository;
     private ManageAppSettingsUseCase manageAppSettings;
+    private LanguageIndexerRegistry languageIndexerRegistry;
     private ExecuteScanJobService service;
 
     @BeforeEach
@@ -52,19 +54,20 @@ class ExecuteScanJobServiceUnitTest {
         sourceFileRepository = mock(SourceFileRepository.class);
         documentRepository = mock(DocumentRepository.class);
         transactionManager = mock(TransactionManager.class);
-        javaFileParser = mock(JavaFileParser.class);
         symbolRepository = mock(SymbolRepository.class);
         symbolReferenceRepository = mock(SymbolReferenceRepository.class);
         manageAppSettings = mock(ManageAppSettingsUseCase.class);
+        languageIndexerRegistry = mock(LanguageIndexerRegistry.class);
         when(manageAppSettings.getSetting(
                 ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE))
                 .thenReturn(ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE);
+        when(languageIndexerRegistry.selectAndPrepare(any(), any())).thenReturn(Map.of());
         service = new ExecuteScanJobService(
                 scanJobRepository, repositoryStore, gitAccess,
                 sourceFileRepository, documentRepository, transactionManager,
-                javaFileParser, symbolRepository, symbolReferenceRepository,
-                manageAppSettings);
+                symbolRepository, symbolReferenceRepository,
+                manageAppSettings, languageIndexerRegistry);
     }
 
     // ── tryExecuteNextJob — no job available ──────────────────────────────────

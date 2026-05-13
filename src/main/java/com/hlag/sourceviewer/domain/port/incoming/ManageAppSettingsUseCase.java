@@ -26,6 +26,24 @@ public interface ManageAppSettingsUseCase {
     /** Default value for {@link #SETTING_SCAN_BATCH_SIZE}. */
     String DEFAULT_SCAN_BATCH_SIZE = "200";
 
+    /** URL of the Maven repository used for dependency resolution. */
+    String SETTING_MAVEN_REPO_URL = "maven.repository.url";
+
+    /** Default value for {@link #SETTING_MAVEN_REPO_URL}: Maven Central. */
+    String DEFAULT_MAVEN_REPO_URL = "https://repo.maven.apache.org/maven2/";
+
+    /** Username for authenticating against the configured Maven repository (empty = no auth). */
+    String SETTING_MAVEN_REPO_USERNAME = "maven.repository.username";
+
+    /** Default value for {@link #SETTING_MAVEN_REPO_USERNAME}. */
+    String DEFAULT_MAVEN_REPO_USERNAME = "";
+
+    /** Password / secret for authenticating against the configured Maven repository. */
+    String SETTING_MAVEN_REPO_PASSWORD = "maven.repository.password";
+
+    /** Default value for {@link #SETTING_MAVEN_REPO_PASSWORD}. */
+    String DEFAULT_MAVEN_REPO_PASSWORD = "";
+
     // ── Operations ────────────────────────────────────────────────────────────
 
     /**

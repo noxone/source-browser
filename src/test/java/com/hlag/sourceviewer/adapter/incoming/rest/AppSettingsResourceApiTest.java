@@ -52,6 +52,7 @@ class AppSettingsResourceApiTest {
 
     @Test
     void listSettings_returns_200_with_all_known_settings() {
+        when(useCase.getSetting(any(), any())).thenAnswer(inv -> inv.getArgument(1));
         when(useCase.getSetting(ManageAppSettingsUseCase.SETTING_SCAN_MAX_PARALLEL_JOBS,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_MAX_PARALLEL_JOBS))
                 .thenReturn("2");
@@ -69,6 +70,7 @@ class AppSettingsResourceApiTest {
 
     @Test
     void listSettings_returns_default_value_when_not_stored() {
+        when(useCase.getSetting(any(), any())).thenAnswer(inv -> inv.getArgument(1));
         when(useCase.getSetting(ManageAppSettingsUseCase.SETTING_SCAN_MAX_PARALLEL_JOBS,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_MAX_PARALLEL_JOBS))
                 .thenReturn(ManageAppSettingsUseCase.DEFAULT_SCAN_MAX_PARALLEL_JOBS);

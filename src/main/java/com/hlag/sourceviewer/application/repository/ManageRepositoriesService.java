@@ -3,6 +3,7 @@ package com.hlag.sourceviewer.application.repository;
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.port.incoming.ManageRepositoriesUseCase;
+import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -23,10 +24,12 @@ public class ManageRepositoriesService implements ManageRepositoriesUseCase {
     private static final Logger logger = LoggerFactory.getLogger(ManageRepositoriesService.class);
 
     private final RepositoryStore repositoryStore;
+    private final GitAccess gitAccess;
 
     @Inject
-    public ManageRepositoriesService(RepositoryStore repositoryStore) {
+    public ManageRepositoriesService(RepositoryStore repositoryStore, GitAccess gitAccess) {
         this.repositoryStore = repositoryStore;
+        this.gitAccess = gitAccess;
     }
 
     /** @inheritDoc */
@@ -78,7 +81,9 @@ public class ManageRepositoriesService implements ManageRepositoriesUseCase {
     @Override
     @Transactional
     public void deleteRepository(RepositoryIdentifier identifier) {
+        var repository = repositoryStore.findByIdentifier(identifier);
         repositoryStore.delete(identifier);
+        repository.ifPresent(gitAccess::deleteLocalRepository);
         logger.info("Deleted repository {}", identifier.value());
     }
 }

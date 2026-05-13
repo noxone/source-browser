@@ -1,6 +1,7 @@
 package com.hlag.sourceviewer.application.scan;
 
-import com.github.javaparser.resolution.TypeSolver;
+import com.hlag.sourceviewer.application.scan.indexer.LanguageIndexerRegistry;
+import com.hlag.sourceviewer.application.scan.indexer.SelectedIndexerContext;
 import com.hlag.sourceviewer.domain.model.identifier.BranchName;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
@@ -46,6 +47,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -64,6 +66,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * then atomically activated in a single final transaction. This applies to documents, symbols,
  * and symbol references alike. Readers always filter {@code published=true} so they see either
  * all-old or all-new data, never a mix from partially-completed scans.</p>
+ *
+ * <p>The scan itself is also split into two phases: Phase 1 indexes all files for full-text
+ * search; Phase 2 runs language-specific symbol indexing via {@link LanguageIndexerRegistry}.</p>
  */
 @ApplicationScoped
 public class ExecuteScanJobService implements ExecuteScanJobUseCase {
@@ -76,10 +81,10 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
     private final SourceFileRepository sourceFileRepository;
     private final DocumentRepository documentRepository;
     private final TransactionManager transactionManager;
-    private final JavaFileParser javaFileParser;
     private final SymbolRepository symbolRepository;
     private final SymbolReferenceRepository symbolReferenceRepository;
     private final ManageAppSettingsUseCase manageAppSettings;
+    private final LanguageIndexerRegistry languageIndexerRegistry;
 
     @Inject
     public ExecuteScanJobService(
@@ -89,20 +94,20 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             SourceFileRepository sourceFileRepository,
             DocumentRepository documentRepository,
             TransactionManager transactionManager,
-            JavaFileParser javaFileParser,
             SymbolRepository symbolRepository,
             SymbolReferenceRepository symbolReferenceRepository,
-            ManageAppSettingsUseCase manageAppSettings) {
+            ManageAppSettingsUseCase manageAppSettings,
+            LanguageIndexerRegistry languageIndexerRegistry) {
         this.scanJobRepository = scanJobRepository;
         this.repositoryStore = repositoryStore;
         this.gitAccess = gitAccess;
         this.sourceFileRepository = sourceFileRepository;
         this.documentRepository = documentRepository;
         this.transactionManager = transactionManager;
-        this.javaFileParser = javaFileParser;
         this.symbolRepository = symbolRepository;
         this.symbolReferenceRepository = symbolReferenceRepository;
         this.manageAppSettings = manageAppSettings;
+        this.languageIndexerRegistry = languageIndexerRegistry;
     }
 
     /**
@@ -249,30 +254,18 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                             }));
         }
 
-        Path repoLocalPath = gitAccess.getLocalPath(repository);
-        TypeSolver typeSolver = javaFileParser.buildTypeSolver(repoLocalPath);
+        // ── Phase 1: full-text-search document indexing ───────────────────────
+        int indexed = runBatchLoop(toIndex, repository.name().value(), "document",
+                batch -> indexDocumentBatch(batch, job, repository, targetSha, branch));
 
-        int currentBatchSize = Integer.parseInt(manageAppSettings.getSetting(
-                ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
-                ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE));
-        int indexed = 0;
-        int i = 0;
-        while (i < toIndex.size()) {
-            List<FilePath> batch = toIndex.subList(i, Math.min(i + currentBatchSize, toIndex.size()));
-            AtomicInteger batchCount = new AtomicInteger(0);
-            try {
-                runInNewTransaction(() ->
-                        batchCount.set(indexBatch(batch, job, repository, targetSha, branch, typeSolver)));
-                indexed += batchCount.get();
-                i += batch.size();
-            } catch (RuntimeException e) {
-                if (batch.size() <= 1) {
-                    throw e;
-                }
-                currentBatchSize = Math.max(1, currentBatchSize / 2);
-                logger.warn("Batch of {} files timed out for repository '{}' — reducing batch size to {} and retrying",
-                        batch.size(), repository.name().value(), currentBatchSize);
-            }
+        // ── Phase 2: language-specific symbol indexing ────────────────────────
+        Path repoLocalPath = gitAccess.getLocalPath(repository);
+        Map<String, SelectedIndexerContext> indexerContexts =
+                languageIndexerRegistry.selectAndPrepare(repoLocalPath, toIndex);
+
+        if (!indexerContexts.isEmpty()) {
+            runBatchLoop(toIndex, repository.name().value(), "symbol",
+                    batch -> indexSymbolBatch(batch, job, repository, targetSha, indexerContexts));
         }
 
         runInNewTransaction(() ->
@@ -284,8 +277,44 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         return indexed;
     }
 
-    private int indexBatch(List<FilePath> batch, ScanJob job, Repository repository,
-                           CommitSha targetSha, BranchName branch, TypeSolver typeSolver) {
+    /**
+     * Runs a batch loop over {@code files} with adaptive batch-size halving on timeout.
+     * Returns the total count returned by {@code batchAction} (meaningful for Phase 1;
+     * Phase 2 can ignore the return value).
+     */
+    private int runBatchLoop(List<FilePath> files, String repoName, String phase,
+                             BatchAction batchAction) {
+        int currentBatchSize = Integer.parseInt(manageAppSettings.getSetting(
+                ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
+                ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE));
+        int total = 0;
+        int i = 0;
+        while (i < files.size()) {
+            List<FilePath> batch = files.subList(i, Math.min(i + currentBatchSize, files.size()));
+            AtomicInteger batchCount = new AtomicInteger(0);
+            try {
+                runInNewTransaction(() -> batchCount.set(batchAction.run(batch)));
+                total += batchCount.get();
+                i += batch.size();
+            } catch (RuntimeException e) {
+                if (batch.size() <= 1) {
+                    throw e;
+                }
+                currentBatchSize = Math.max(1, currentBatchSize / 2);
+                logger.warn("Batch of {} files timed out for repository '{}' ({} phase) — reducing batch size to {} and retrying",
+                        batch.size(), repoName, phase, currentBatchSize);
+            }
+        }
+        return total;
+    }
+
+    @FunctionalInterface
+    private interface BatchAction {
+        int run(List<FilePath> batch);
+    }
+
+    private int indexDocumentBatch(List<FilePath> batch, ScanJob job, Repository repository,
+                                   CommitSha targetSha, BranchName branch) {
         int indexed = 0;
         for (FilePath path : batch) {
             try {
@@ -294,7 +323,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                     logger.debug("Skipping binary file: {}", path.value());
                     continue;
                 }
-                logger.debug("Working on: {}", path.value());
+                logger.debug("Indexing for full-text search: {}", path.value());
                 String content = contentOpt.get();
                 var contentSha = new ContentSha(sha256(content));
 
@@ -314,11 +343,6 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                                         Instant.now())));
 
                 documentRepository.insertUnpublished(new Document(fileId, "source", content, job.identifier().value()));
-
-                if (path.value().endsWith(".java")) {
-                    indexSymbols(fileId, path, content, typeSolver, job.identifier().value());
-                }
-
                 indexed++;
             } catch (Exception e) {
                 if (isTransactionRollbackPending()) {
@@ -333,11 +357,46 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         return indexed;
     }
 
-    private void indexSymbols(FileIdentifier fileId, FilePath path, String content, TypeSolver typeSolver, Long scanJobId) {
-        // Old symbols/refs are not deleted here — they stay published until activateDocuments()
-        // removes them atomically after the full scan succeeds.
-        var parsed = javaFileParser.parse(fileId, path, content, typeSolver);
+    private int indexSymbolBatch(List<FilePath> batch, ScanJob job, Repository repository,
+                                 CommitSha targetSha,
+                                 Map<String, SelectedIndexerContext> indexerContexts) {
+        var branch = repository.defaultBranch();
+        int indexed = 0;
+        for (FilePath path : batch) {
+            try {
+                var matchingContext = indexerContexts.values().stream()
+                        .filter(ctx -> ctx.handles(path))
+                        .findFirst();
+                if (matchingContext.isEmpty()) {
+                    continue;
+                }
+                var contentOpt = gitAccess.readFileContent(repository, path, targetSha);
+                if (contentOpt.isEmpty()) {
+                    continue;
+                }
+                var fileOpt = sourceFileRepository.findByRepositoryAndPath(
+                        repository.identifier(), branch, path);
+                if (fileOpt.isEmpty()) {
+                    continue;
+                }
+                logger.debug("Indexing symbols of {}: {}", matchingContext.get().indexer().supportedLanguage(), path.value());
+                var parsed = matchingContext.get().index(fileOpt.get().identifier(), path, contentOpt.get());
+                storeSymbols(parsed, fileOpt.get().identifier(), job.identifier().value());
+                indexed++;
+            } catch (Exception e) {
+                if (isTransactionRollbackPending()) {
+                    logger.error("Exception happened while indexing symbols for '{}' in '{}' after {} files — aborting batch",
+                            path.value(), repository.name().value(), indexed, e);
+                    throw new RuntimeException("Symbol indexing aborted: transaction timeout after " + indexed + " files", e);
+                }
+                logger.warn("Failed to index symbols for '{}' in repository '{}': {}",
+                        path.value(), repository.name().value(), e.getMessage());
+            }
+        }
+        return indexed;
+    }
 
+    private void storeSymbols(JavaFileParser.ParsedFile parsed, FileIdentifier fileId, Long scanJobId) {
         parsed.declarations().forEach(symbol -> symbolRepository.insertUnpublished(symbol, scanJobId));
 
         for (var ref : parsed.references()) {
