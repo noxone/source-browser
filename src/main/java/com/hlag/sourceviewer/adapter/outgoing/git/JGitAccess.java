@@ -6,6 +6,7 @@ import com.hlag.sourceviewer.domain.model.identifier.CredentialScopeIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.CredentialScopeType;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
+import com.hlag.sourceviewer.domain.model.source.CommitInfo;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.GitCredentialStore;
 import com.hlag.sourceviewer.domain.port.outgoing.SecretEncryptor;
@@ -337,6 +338,39 @@ public class JGitAccess implements GitAccess {
                 treeParser.reset(objectReader, tree.getId());
             }
             return treeParser;
+        }
+    }
+
+    @Override
+    public Optional<CommitInfo> getLastCommitForFile(Repository repository, FilePath path, BranchName branch) {
+        if (!localRepositoryExists(repository)) {
+            return Optional.empty();
+        }
+        try (org.eclipse.jgit.lib.Repository gitRepository = openGitRepository(repository)) {
+            try (Git git = new Git(gitRepository)) {
+                var logCommand = git.log()
+                        .add(gitRepository.resolve("refs/remotes/origin/" + branch.value()))
+                        .addPath(path.value())
+                        .setMaxCount(1);
+                var commits = logCommand.call();
+                var iter = commits.iterator();
+                if (!iter.hasNext()) {
+                    return Optional.empty();
+                }
+                RevCommit commit = iter.next();
+                var authorIdent = commit.getAuthorIdent();
+                return Optional.of(new CommitInfo(
+                        commit.getName(),
+                        authorIdent.getName(),
+                        authorIdent.getEmailAddress(),
+                        authorIdent.getWhenAsInstant(),
+                        commit.getShortMessage()
+                ));
+            }
+        } catch (IOException | GitAPIException exception) {
+            logger.warn("Failed to get last commit for file {} in repository {}: {}",
+                    path.value(), repository.name().value(), exception.getMessage());
+            return Optional.empty();
         }
     }
 }

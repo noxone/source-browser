@@ -99,4 +99,19 @@ public class PanacheSymbolReferenceRepository implements SymbolReferenceReposito
                 .setParameter("jobId", scanJobId)
                 .executeUpdate();
     }
+
+    @Override
+    public List<SymbolReference> findByFileForScan(FileIdentifier fileIdentifier, Long scanJobId) {
+        List<SymbolReference> unpublished = entityManager
+                .createQuery("FROM SymbolReference r WHERE r.fileIdentifier = :id" +
+                             " AND r.published = false AND r.scanJobId = :jobId",
+                        SymbolReference.class)
+                .setParameter("id", fileIdentifier)
+                .setParameter("jobId", scanJobId)
+                .getResultList();
+        if (!unpublished.isEmpty()) {
+            return unpublished;
+        }
+        return findByFile(fileIdentifier);
+    }
 }

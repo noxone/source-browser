@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import SearchView from '../views/SearchView.vue'
 import AdminView from '../views/AdminView.vue'
 import UserSettingsView from '../views/UserSettingsView.vue'
+import FileView from '../views/FileView.vue'
 import { useAuth } from '../auth/useAuth'
 
 const router = createRouter({
@@ -15,6 +16,12 @@ const router = createRouter({
       path: '/search',
       name: 'search',
       component: SearchView,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/file/:fileId',
+      name: 'file',
+      component: FileView,
       meta: { requiresAuth: true }
     },
     {

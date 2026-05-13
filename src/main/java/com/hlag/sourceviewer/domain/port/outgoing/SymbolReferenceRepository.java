@@ -37,4 +37,11 @@ public interface SymbolReferenceRepository {
 
     /** Deletes all unpublished references for the given scan job (cleanup on failure). */
     void deleteUnpublishedByScanJob(Long scanJobId);
+
+    /**
+     * Returns unpublished references for the given file written during the specified scan job,
+     * falling back to published references when no unpublished ones exist yet.
+     * Used during token-stream enrichment to attach symbol IDs to identifier tokens.
+     */
+    List<SymbolReference> findByFileForScan(FileIdentifier fileIdentifier, Long scanJobId);
 }

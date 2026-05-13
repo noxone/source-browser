@@ -5,6 +5,7 @@ import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.*;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
+import com.hlag.sourceviewer.domain.model.source.CommitInfo;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -78,4 +79,11 @@ public interface GitAccess {
      * Does nothing when the repository has never been cloned locally.
      */
     void deleteLocalRepository(Repository repository);
+
+    /**
+     * Returns the most recent commit that touched the given file path on the
+     * specified branch, or {@link Optional#empty()} when the file has no commit
+     * history (e.g. the repository has not been cloned yet).
+     */
+    Optional<CommitInfo> getLastCommitForFile(Repository repository, FilePath path, BranchName branch);
 }

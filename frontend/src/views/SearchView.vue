@@ -63,28 +63,39 @@
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Symbol</th>
-            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">File</th>
             <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Repository</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">File</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Found areas</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
           <tr v-for="result in results" :key="result.fileId + result.snippet" class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4">
-              <span class="font-mono text-sm text-gray-800">{{ result.snippet }}</span>
-            </td>
-            <td class="px-6 py-4">
-              <a
-                :href="`/view/file/${result.fileId}`"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="font-mono text-xs text-indigo-600 hover:underline"
-              >{{ result.filePath }}</a>
-            </td>
-            <td class="px-6 py-4">
+            <!-- Repository tag -->
+            <td class="px-6 py-4 whitespace-nowrap">
               <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
                 {{ result.repositoryName }}
               </span>
+            </td>
+
+            <!-- File path with middle-ellipsis and hover popover -->
+            <td class="px-6 py-4">
+              <div class="relative group inline-block max-w-full">
+                <RouterLink
+                  :to="{ name: 'file', params: { fileId: result.fileId } }"
+                  class="font-mono text-xs text-indigo-600 hover:underline"
+                >{{ truncatePath(result.filePath) }}</RouterLink>
+
+                <!-- Popover shown when path is truncated -->
+                <div
+                  v-if="result.filePath.length > PATH_TRUNCATE_LIMIT"
+                  class="absolute z-10 left-0 top-full mt-1 hidden group-hover:block bg-gray-900 text-white text-xs font-mono rounded-lg px-3 py-2 shadow-lg whitespace-nowrap max-w-lg break-all pointer-events-none"
+                >{{ result.filePath }}</div>
+              </div>
+            </td>
+
+            <!-- Found areas / snippet -->
+            <td class="px-6 py-4">
+              <span class="font-mono text-sm text-gray-800">{{ result.snippet }}</span>
             </td>
           </tr>
         </tbody>
@@ -99,8 +110,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import type { SearchResult } from '../types/search'
 import { search } from '../api/search'
+
+const PATH_TRUNCATE_LIMIT = 100
 
 const queryInput = ref('')
 const lastQuery = ref('')
@@ -108,6 +122,12 @@ const results = ref<SearchResult[]>([])
 const loading = ref(false)
 const error = ref('')
 const searched = ref(false)
+
+function truncatePath(path: string, maxLen = PATH_TRUNCATE_LIMIT): string {
+  if (path.length <= maxLen) return path
+  const half = Math.floor((maxLen - 1) / 2)
+  return path.slice(0, half) + '…' + path.slice(path.length - half)
+}
 
 async function runSearch() {
   const q = queryInput.value.trim()

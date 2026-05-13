@@ -16,6 +16,7 @@ import com.hlag.sourceviewer.domain.model.identifier.TokenCount;
 import com.hlag.sourceviewer.domain.model.repository.ContentSha;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.Document;
+import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
 import com.hlag.sourceviewer.domain.model.source.SourceFile;
 import com.hlag.sourceviewer.domain.model.source.Symbol;
@@ -29,6 +30,7 @@ import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TokenStreamRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.InvalidTransactionException;
@@ -45,6 +47,8 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -85,6 +89,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
     private final SymbolReferenceRepository symbolReferenceRepository;
     private final ManageAppSettingsUseCase manageAppSettings;
     private final LanguageIndexerRegistry languageIndexerRegistry;
+    private final TokenStreamRepository tokenStreamRepository;
 
     @Inject
     public ExecuteScanJobService(
@@ -97,7 +102,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             SymbolRepository symbolRepository,
             SymbolReferenceRepository symbolReferenceRepository,
             ManageAppSettingsUseCase manageAppSettings,
-            LanguageIndexerRegistry languageIndexerRegistry) {
+            LanguageIndexerRegistry languageIndexerRegistry,
+            TokenStreamRepository tokenStreamRepository) {
         this.scanJobRepository = scanJobRepository;
         this.repositoryStore = repositoryStore;
         this.gitAccess = gitAccess;
@@ -108,6 +114,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         this.symbolReferenceRepository = symbolReferenceRepository;
         this.manageAppSettings = manageAppSettings;
         this.languageIndexerRegistry = languageIndexerRegistry;
+        this.tokenStreamRepository = tokenStreamRepository;
     }
 
     /**
@@ -176,6 +183,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 symbolReferenceRepository.deleteUnpublishedByScanJob(scanJobId);
                 symbolRepository.deleteUnpublishedByScanJob(scanJobId);
                 documentRepository.deleteUnpublishedByScanJob(scanJobId);
+                tokenStreamRepository.deleteUnpublishedByScanJob(scanJobId);
             });
         } catch (Exception e) {
             logger.error("Failed to clean up unpublished data for scan job {}", identifier.value(), e);
@@ -380,8 +388,11 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                     continue;
                 }
                 logger.debug("Indexing symbols of {}: {}", matchingContext.get().indexer().supportedLanguage(), path.value());
-                var parsed = matchingContext.get().index(fileOpt.get().identifier(), path, contentOpt.get());
-                storeSymbols(parsed, fileOpt.get().identifier(), job.identifier().value());
+                var fileId = fileOpt.get().identifier();
+                Long scanJobId = job.identifier().value();
+                var parsed = matchingContext.get().index(fileId, path, contentOpt.get());
+                storeSymbols(parsed, fileId, scanJobId);
+                storeTokenStream(parsed, fileId, scanJobId);
                 indexed++;
             } catch (Exception e) {
                 if (isTransactionRollbackPending()) {
@@ -417,6 +428,58 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         }
     }
 
+    private void storeTokenStream(JavaFileParser.ParsedFile parsed, FileIdentifier fileId, Long scanJobId) {
+        if (parsed.tokens().isEmpty()) {
+            return;
+        }
+
+        // Build lookup: "line:col" → qualified name + symbol ID, from already-persisted declarations.
+        // Symbol IDs are available because insertUnpublished flushes the IDENTITY-generated ID back.
+        Map<String, String> declarationQn = new HashMap<>();
+        Map<String, Long> declarationId = new HashMap<>();
+        for (Symbol sym : parsed.declarations()) {
+            sym.lineStart().ifPresent(line ->
+                sym.columnStart().ifPresent(col -> {
+                    String key = line.value() + ":" + col.value();
+                    declarationQn.put(key, sym.qualifiedName().value());
+                    if (sym.identifier() != null) {
+                        declarationId.put(key, sym.identifier().value());
+                    }
+                }));
+        }
+
+        // Build lookup from unpublished references for this scan job (fallback: published).
+        Map<String, SymbolReference> refMap = new HashMap<>();
+        for (SymbolReference ref : symbolReferenceRepository.findByFileForScan(fileId, scanJobId)) {
+            ref.line().ifPresent(line ->
+                ref.columnStart().ifPresent(col ->
+                    refMap.put(line.value() + ":" + col.value(), ref)));
+        }
+
+        // Enrich IDENTIFIER tokens with semantic information where available.
+        var enriched = new ArrayList<ExtractedToken>(parsed.tokens().size());
+        for (ExtractedToken token : parsed.tokens()) {
+            if (token.kind() != ExtractedToken.TokenKind.IDENTIFIER) {
+                enriched.add(token);
+                continue;
+            }
+            String key = token.line() + ":" + token.columnStart();
+            String qn = declarationQn.get(key);
+            Long symId = declarationId.get(key);
+            if (qn == null) {
+                SymbolReference ref = refMap.get(key);
+                if (ref != null) {
+                    symId = ref.symbolIdentifier().map(SymbolIdentifier::value).orElse(null);
+                }
+            }
+            enriched.add(new ExtractedToken(
+                    token.line(), token.columnStart(), token.columnEnd(),
+                    token.text(), token.kind(), qn, symId));
+        }
+
+        tokenStreamRepository.storeUnpublished(fileId, enriched, scanJobId);
+    }
+
     private void activateDocuments(ScanJobIdentifier identifier, Repository repository, CommitSha targetSha) {
         Long scanJobId = identifier.value();
         symbolRepository.publishByScanJob(scanJobId);
@@ -425,6 +488,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         symbolReferenceRepository.deleteSupersededByScanJob(scanJobId);
         documentRepository.publishByScanJob(scanJobId);
         documentRepository.deleteSupersededDocuments(scanJobId);
+        tokenStreamRepository.publishByScanJob(scanJobId);
+        tokenStreamRepository.deleteSupersededByScanJob(scanJobId);
         repository.setLastCommitSha(targetSha);
         repository.setLastScannedAt(Instant.now());
         repositoryStore.update(repository);

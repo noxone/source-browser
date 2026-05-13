@@ -1,6 +1,7 @@
 package com.hlag.sourceviewer.application.scan;
 
 import com.github.javaparser.JavaParser;
+import com.github.javaparser.JavaToken;
 import com.github.javaparser.ParserConfiguration;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.NodeList;
@@ -26,6 +27,7 @@ import com.github.javaparser.symbolsolver.resolution.typesolvers.JavaParserTypeS
 import com.github.javaparser.symbolsolver.resolution.typesolvers.ReflectionTypeSolver;
 import com.hlag.sourceviewer.domain.model.identifier.ColumnNumber;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
+import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.LineNumber;
 import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
@@ -65,9 +67,9 @@ public class JavaFileParser {
 
     private static final Logger logger = LoggerFactory.getLogger(JavaFileParser.class);
 
-    public record ParsedFile(List<Symbol> declarations, List<PendingReference> references) {
+    public record ParsedFile(List<Symbol> declarations, List<PendingReference> references, List<ExtractedToken> tokens) {
         static ParsedFile empty() {
-            return new ParsedFile(List.of(), List.of());
+            return new ParsedFile(List.of(), List.of(), List.of());
         }
     }
 
@@ -170,13 +172,70 @@ public class JavaFileParser {
             cu.accept(new DeclarationVisitor(fileId, packagePrefix, declarations), new ArrayDeque<>());
             cu.accept(new ReferenceVisitor(fileId, references), null);
 
+            List<ExtractedToken> tokens = extractTokens(cu);
+
             return new ParsedFile(
                     Collections.unmodifiableList(declarations),
-                    Collections.unmodifiableList(references));
+                    Collections.unmodifiableList(references),
+                    Collections.unmodifiableList(tokens));
         } catch (Exception e) {
             logger.warn("Could not parse Java file {}: {}", filePath.value(), e.getMessage());
             return ParsedFile.empty();
         }
+    }
+
+    // ── Token extraction ──────────────────────────────────────────────────────
+
+    private static List<ExtractedToken> extractTokens(CompilationUnit cu) {
+        return cu.getTokenRange()
+                .map(range -> {
+                    var result = new ArrayList<ExtractedToken>();
+                    for (JavaToken token : range) {
+                        var r = token.getRange().orElse(null);
+                        if (r == null) continue;
+                        result.add(new ExtractedToken(
+                                r.begin.line,
+                                r.begin.column,
+                                r.end.column,
+                                token.getText(),
+                                mapTokenKind(token),
+                                null,
+                                null));
+                    }
+                    return (List<ExtractedToken>) result;
+                })
+                .orElse(List.of());
+    }
+
+    private static ExtractedToken.TokenKind mapTokenKind(JavaToken token) {
+        return switch (token.getCategory()) {
+            case KEYWORD -> ExtractedToken.TokenKind.KEYWORD;
+            case IDENTIFIER -> ExtractedToken.TokenKind.IDENTIFIER;
+            case SEPARATOR -> ExtractedToken.TokenKind.SEPARATOR;
+            case OPERATOR -> ExtractedToken.TokenKind.OPERATOR;
+            case WHITESPACE_NO_EOL, EOL -> ExtractedToken.TokenKind.WHITESPACE;
+            case COMMENT -> {
+                JavaToken.Kind kind = JavaToken.Kind.valueOf(token.getKind());
+                yield switch (kind) {
+                    case SINGLE_LINE_COMMENT -> ExtractedToken.TokenKind.LINE_COMMENT;
+                    case JAVADOC_COMMENT -> ExtractedToken.TokenKind.JAVADOC_COMMENT;
+                    default -> ExtractedToken.TokenKind.BLOCK_COMMENT;
+                };
+            }
+            case LITERAL -> {
+                JavaToken.Kind kind = JavaToken.Kind.valueOf(token.getKind());
+                yield switch (kind) {
+                    case CHARACTER_LITERAL -> ExtractedToken.TokenKind.CHAR_LITERAL;
+                    case STRING_LITERAL, TEXT_BLOCK_LITERAL, TEXT_BLOCK_CONTENT,
+                         ENTER_TEXT_BLOCK -> ExtractedToken.TokenKind.STRING_LITERAL;
+                    case LONG_LITERAL -> ExtractedToken.TokenKind.LONG_LITERAL;
+                    case FLOATING_POINT_LITERAL, DECIMAL_FLOATING_POINT_LITERAL,
+                         HEXADECIMAL_FLOATING_POINT_LITERAL -> ExtractedToken.TokenKind.FLOAT_LITERAL;
+                    default -> ExtractedToken.TokenKind.INTEGER_LITERAL;
+                };
+            }
+            default -> ExtractedToken.TokenKind.OTHER;
+        };
     }
 
     // ── Declaration visitor ───────────────────────────────────────────────────

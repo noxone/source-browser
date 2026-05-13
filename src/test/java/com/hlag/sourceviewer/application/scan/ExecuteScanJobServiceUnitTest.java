@@ -15,6 +15,7 @@ import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
 import com.hlag.sourceviewer.domain.port.incoming.ManageAppSettingsUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TokenStreamRepository;
 import jakarta.transaction.TransactionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,7 @@ class ExecuteScanJobServiceUnitTest {
     private SymbolReferenceRepository symbolReferenceRepository;
     private ManageAppSettingsUseCase manageAppSettings;
     private LanguageIndexerRegistry languageIndexerRegistry;
+    private TokenStreamRepository tokenStreamRepository;
     private ExecuteScanJobService service;
 
     @BeforeEach
@@ -58,6 +60,7 @@ class ExecuteScanJobServiceUnitTest {
         symbolReferenceRepository = mock(SymbolReferenceRepository.class);
         manageAppSettings = mock(ManageAppSettingsUseCase.class);
         languageIndexerRegistry = mock(LanguageIndexerRegistry.class);
+        tokenStreamRepository = mock(TokenStreamRepository.class);
         when(manageAppSettings.getSetting(
                 ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE))
@@ -67,7 +70,7 @@ class ExecuteScanJobServiceUnitTest {
                 scanJobRepository, repositoryStore, gitAccess,
                 sourceFileRepository, documentRepository, transactionManager,
                 symbolRepository, symbolReferenceRepository,
-                manageAppSettings, languageIndexerRegistry);
+                manageAppSettings, languageIndexerRegistry, tokenStreamRepository);
     }
 
     // ── tryExecuteNextJob — no job available ──────────────────────────────────
@@ -126,9 +129,12 @@ class ExecuteScanJobServiceUnitTest {
         verify(symbolReferenceRepository).deleteSupersededByScanJob(10L);
         verify(documentRepository).publishByScanJob(10L);
         verify(documentRepository).deleteSupersededDocuments(10L);
+        verify(tokenStreamRepository).publishByScanJob(10L);
+        verify(tokenStreamRepository).deleteSupersededByScanJob(10L);
         verify(symbolRepository, never()).deleteUnpublishedByScanJob(anyLong());
         verify(symbolReferenceRepository, never()).deleteUnpublishedByScanJob(anyLong());
         verify(documentRepository, never()).deleteUnpublishedByScanJob(anyLong());
+        verify(tokenStreamRepository, never()).deleteUnpublishedByScanJob(anyLong());
     }
 
     // ── tryExecuteNextJob — failure path ──────────────────────────────────────
@@ -167,9 +173,11 @@ class ExecuteScanJobServiceUnitTest {
         verify(symbolReferenceRepository).deleteUnpublishedByScanJob(11L);
         verify(symbolRepository).deleteUnpublishedByScanJob(11L);
         verify(documentRepository).deleteUnpublishedByScanJob(11L);
+        verify(tokenStreamRepository).deleteUnpublishedByScanJob(11L);
         verify(symbolRepository, never()).publishByScanJob(anyLong());
         verify(symbolReferenceRepository, never()).publishByScanJob(anyLong());
         verify(documentRepository, never()).publishByScanJob(anyLong());
+        verify(tokenStreamRepository, never()).publishByScanJob(anyLong());
     }
 
     @Test
