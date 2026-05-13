@@ -109,12 +109,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import type { SearchResult } from '../types/search'
 import { search } from '../api/search'
 
 const PATH_TRUNCATE_LIMIT = 100
+
+const route = useRoute()
+const router = useRouter()
 
 const queryInput = ref('')
 const lastQuery = ref('')
@@ -122,6 +125,14 @@ const results = ref<SearchResult[]>([])
 const loading = ref(false)
 const error = ref('')
 const searched = ref(false)
+
+onMounted(() => {
+  const q = route.query.q as string | undefined
+  if (q) {
+    queryInput.value = q
+    runSearch()
+  }
+})
 
 function truncatePath(path: string, maxLen = PATH_TRUNCATE_LIMIT): string {
   if (path.length <= maxLen) return path
@@ -132,6 +143,9 @@ function truncatePath(path: string, maxLen = PATH_TRUNCATE_LIMIT): string {
 async function runSearch() {
   const q = queryInput.value.trim()
   if (!q) return
+
+  // Persist the query in the URL so it survives browser back navigation
+  router.replace({ name: 'search', query: { q } })
 
   loading.value = true
   error.value = ''

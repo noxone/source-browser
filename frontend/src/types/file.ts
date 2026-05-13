@@ -47,3 +47,26 @@ export type TokenKind =
   | 'SEPARATOR'
   | 'WHITESPACE'
   | 'OTHER'
+
+export interface SymbolInfo {
+  symbolId: number
+  fileId: number
+  filePath: string | null
+  repositoryName: string | null
+  qualifiedName: string
+  simpleName: string
+  kind: string
+  signature: string | null
+  lineStart: number | null
+  lineEnd: number | null
+}
+
+export interface SymbolReference {
+  referenceId: number
+  fileId: number
+  filePath: string | null
+  repositoryName: string | null
+  kind: string
+  line: number | null
+  columnStart: number | null
+}

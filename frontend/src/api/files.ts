@@ -1,4 +1,4 @@
-import type { FileInfo, Token } from '../types/file'
+import type { FileInfo, Token, SymbolInfo, SymbolReference } from '../types/file'
 import { authenticatedFetch } from './http'
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -27,4 +27,12 @@ export async function getFileContent(fileId: number): Promise<string> {
 
 export async function getTokenStream(fileId: number): Promise<Token[]> {
   return handleResponse(await authenticatedFetch(`/api/files/${fileId}/token-stream`))
+}
+
+export async function getSymbol(symbolId: number): Promise<SymbolInfo> {
+  return handleResponse(await authenticatedFetch(`/api/symbols/${symbolId}`))
+}
+
+export async function getSymbolReferences(symbolId: number): Promise<SymbolReference[]> {
+  return handleResponse(await authenticatedFetch(`/api/symbols/${symbolId}/references`))
 }

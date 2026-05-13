@@ -19,12 +19,12 @@ public class PanacheDocumentRepository
     public List<DocumentSearchMatch> search(String text, int maxResults, int offset) {
         List<Object[]> rows = getEntityManager().createNativeQuery("""
                 SELECT d.file_id,
-                       ts_headline('english', d.content, plainto_tsquery('english', :text),
+                       ts_headline('english', d.content, websearch_to_tsquery('english', :text),
                            'MaxWords=30,MinWords=10,MaxFragments=1') AS snippet,
-                       ts_rank(d.search_vector, plainto_tsquery('english', :text)) AS rank
+                       ts_rank(d.search_vector, websearch_to_tsquery('english', :text)) AS rank
                 FROM   document d
                 WHERE  d.published = true
-                  AND  d.search_vector @@ plainto_tsquery('english', :text)
+                  AND  d.search_vector @@ websearch_to_tsquery('english', :text)
                 ORDER  BY rank DESC
                 LIMIT  :limit OFFSET :offset
                 """)
