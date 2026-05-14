@@ -32,27 +32,10 @@
         </button>
       </form>
 
-      <!-- Repository filter pills -->
-      <div v-if="repositories.length > 0" class="mt-3 flex flex-wrap gap-2 items-center">
-        <span class="text-xs text-gray-500 font-medium mr-1">Filter by repo:</span>
-        <button
-          v-for="repo in repositories"
-          :key="repo.id"
-          type="button"
-          @click="toggleRepo(repo.id)"
-          :class="[
-            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors',
-            selectedRepoIds.includes(repo.id)
-              ? 'bg-indigo-600 text-white border-indigo-600'
-              : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600'
-          ]"
-        >{{ repo.name }}</button>
-        <button
-          v-if="selectedRepoIds.length > 0"
-          type="button"
-          @click="selectedRepoIds = []"
-          class="text-xs text-gray-400 hover:text-gray-600 underline ml-1"
-        >Clear</button>
+      <!-- Repository filter -->
+      <div v-if="repositories.length > 0" class="mt-3 flex items-center gap-2">
+        <span class="text-xs text-gray-500 font-medium shrink-0">Filter by repo:</span>
+        <RepoMultiSelect :repositories="repositories" v-model="selectedRepoIds" />
       </div>
 
       <!-- Search syntax hints -->
@@ -155,6 +138,7 @@ import type { SearchResult } from '../types/search'
 import type { Repository } from '../types/repository'
 import { search } from '../api/search'
 import { listRepositories } from '../api/repositories'
+import RepoMultiSelect from '../components/RepoMultiSelect.vue'
 
 const PATH_TRUNCATE_LIMIT = 100
 
@@ -202,12 +186,6 @@ function truncatePath(path: string, maxLen = PATH_TRUNCATE_LIMIT): string {
   if (path.length <= maxLen) return path
   const half = Math.floor((maxLen - 1) / 2)
   return path.slice(0, half) + '…' + path.slice(path.length - half)
-}
-
-function toggleRepo(id: number) {
-  const idx = selectedRepoIds.value.indexOf(id)
-  if (idx >= 0) selectedRepoIds.value.splice(idx, 1)
-  else selectedRepoIds.value.push(id)
 }
 
 interface SnippetSegment {

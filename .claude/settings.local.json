@@ -18,7 +18,8 @@
       "Bash(mvn test-compile *)",
       "Bash(xargs grep *)",
       "Bash(xargs head *)",
-      "Bash(./mvnw test *)"
+      "Bash(./mvnw test *)",
+      "Bash(grep -E \"\\\\.vue$\")"
     ]
   }
 }
