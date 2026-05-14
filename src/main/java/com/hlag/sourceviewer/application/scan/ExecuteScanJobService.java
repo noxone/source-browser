@@ -333,6 +333,9 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
 
     private int indexDocumentBatch(List<FilePath> batch, ScanJob job, Repository repository,
                                    CommitSha targetSha, BranchName branch) {
+        int maxChunkSize = Integer.parseInt(manageAppSettings.getSetting(
+                ManageAppSettingsUseCase.SETTING_SCAN_CHUNK_SIZE,
+                ManageAppSettingsUseCase.DEFAULT_SCAN_CHUNK_SIZE));
         int indexed = 0;
         for (FilePath path : batch) {
             try {
@@ -360,8 +363,14 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                                         new DisplayName("unknown"),
                                         Instant.now())));
 
-                documentRepository.insertUnpublished(new Document(fileId, "source", content, job.identifier().value()));
-                indexed++;
+                List<String> chunks = splitIntoChunks(content, maxChunkSize);
+                for (String chunk : chunks) {
+                    documentRepository.insertUnpublished(
+                            new Document(fileId, "source", chunk, job.identifier().value()));
+                }
+                if (!chunks.isEmpty()) {
+                    indexed++;
+                }
             } catch (Exception e) {
                 if (isTransactionRollbackPending()) {
                     logger.error("Exception happened while indexing '{}' in '{}' after {} files — aborting batch",
@@ -549,6 +558,46 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         } catch (SystemException e) {
             return false;
         }
+    }
+
+    /**
+     * Splits {@code content} into chunks of at most {@code maxChunkSize} characters,
+     * breaking only at newline boundaries. A single line longer than the limit is
+     * kept as one chunk. Returns a single-element list when the content already fits.
+     */
+    static List<String> splitIntoChunks(String content, int maxChunkSize) {
+        if (maxChunkSize <= 0 || content.length() <= maxChunkSize) {
+            return List.of(content);
+        }
+        List<String> chunks = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int start = 0;
+        while (start < content.length()) {
+            int newline = content.indexOf('\n', start);
+            int end = (newline == -1) ? content.length() : newline + 1;
+            String line = content.substring(start, end);
+            if (line.length() > maxChunkSize) {
+                // Line exceeds the limit — flush current chunk then split the line at character boundaries
+                if (!current.isEmpty()) {
+                    chunks.add(current.toString());
+                    current.setLength(0);
+                }
+                for (int i = 0; i < line.length(); i += maxChunkSize) {
+                    chunks.add(line.substring(i, Math.min(i + maxChunkSize, line.length())));
+                }
+            } else {
+                if (current.length() + line.length() > maxChunkSize) {
+                    chunks.add(current.toString());
+                    current.setLength(0);
+                }
+                current.append(line);
+            }
+            start = end;
+        }
+        if (!current.isEmpty()) {
+            chunks.add(current.toString());
+        }
+        return chunks;
     }
 
     private static String sha256(String content) {

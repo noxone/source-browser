@@ -18,10 +18,12 @@ import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.TokenStreamRepository;
 import jakarta.transaction.TransactionManager;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -65,6 +67,10 @@ class ExecuteScanJobServiceUnitTest {
                 ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE))
                 .thenReturn(ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE);
+        when(manageAppSettings.getSetting(
+                ManageAppSettingsUseCase.SETTING_SCAN_CHUNK_SIZE,
+                ManageAppSettingsUseCase.DEFAULT_SCAN_CHUNK_SIZE))
+                .thenReturn(ManageAppSettingsUseCase.DEFAULT_SCAN_CHUNK_SIZE);
         when(languageIndexerRegistry.selectAndPrepare(any(), any())).thenReturn(Map.of());
         service = new ExecuteScanJobService(
                 scanJobRepository, repositoryStore, gitAccess,
@@ -221,6 +227,97 @@ class ExecuteScanJobServiceUnitTest {
 
         assertThat(result).isEmpty();
         verify(scanJobRepository, never()).update(any());
+    }
+
+    // ── splitIntoChunks ───────────────────────────────────────────────────────
+
+    @Nested
+    class SplitIntoChunksTest {
+
+        @Test
+        void returns_single_chunk_when_content_fits_within_limit() {
+            String content = "hello\nworld\n";
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks(content, 100);
+            assertThat(chunks).containsExactly(content);
+        }
+
+        @Test
+        void returns_single_chunk_when_content_length_equals_limit() {
+            String content = "abc";
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks(content, 3);
+            assertThat(chunks).containsExactly(content);
+        }
+
+        @Test
+        void returns_single_chunk_when_max_chunk_size_is_zero() {
+            String content = "some content";
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks(content, 0);
+            assertThat(chunks).containsExactly(content);
+        }
+
+        @Test
+        void returns_single_chunk_when_max_chunk_size_is_negative() {
+            String content = "some content";
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks(content, -1);
+            assertThat(chunks).containsExactly(content);
+        }
+
+        @Test
+        void splits_at_line_boundaries_not_mid_line() {
+            String line1 = "a".repeat(300) + "\n";
+            String line2 = "b".repeat(300) + "\n";
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks(line1 + line2, 400);
+            assertThat(chunks).hasSize(2);
+            assertThat(chunks.get(0)).isEqualTo(line1);
+            assertThat(chunks.get(1)).isEqualTo(line2);
+        }
+
+        @Test
+        void splits_long_line_at_character_boundary_when_exceeding_limit() {
+            String line = "x".repeat(600) + "\n";
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks(line, 400);
+            assertThat(chunks).hasSize(2);
+            assertThat(chunks.get(0)).isEqualTo("x".repeat(400));
+            assertThat(chunks.get(1)).isEqualTo("x".repeat(200) + "\n");
+        }
+
+        @Test
+        void all_chunks_within_limit_for_multi_line_content() {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 10; i++) {
+                sb.append("line").append(i).append("-").append("x".repeat(90)).append("\n");
+            }
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks(sb.toString(), 350);
+            for (String chunk : chunks) {
+                assertThat(chunk.length()).isLessThanOrEqualTo(350);
+            }
+        }
+
+        @Test
+        void joining_chunks_reconstructs_original_content() {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 20; i++) {
+                sb.append("line").append(i).append("\n");
+            }
+            String content = sb.toString();
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks(content, 50);
+            assertThat(String.join("", chunks)).isEqualTo(content);
+        }
+
+        @Test
+        void handles_empty_content() {
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks("", 100);
+            assertThat(chunks).containsExactly("");
+        }
+
+        @Test
+        void handles_content_with_no_newlines() {
+            String content = "x".repeat(600);
+            List<String> chunks = ExecuteScanJobService.splitIntoChunks(content, 400);
+            assertThat(chunks).hasSize(2);
+            assertThat(chunks.get(0)).hasSize(400);
+            assertThat(chunks.get(1)).hasSize(200);
+        }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

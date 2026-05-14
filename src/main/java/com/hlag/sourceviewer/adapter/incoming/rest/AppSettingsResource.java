@@ -35,6 +35,8 @@ public class AppSettingsResource {
             "Maximum number of scan jobs executed concurrently per application instance",
             ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
             "Number of files processed per batch during a scan (each batch runs in its own transaction)",
+            ManageAppSettingsUseCase.SETTING_SCAN_CHUNK_SIZE,
+            "Maximum number of characters per document chunk when indexing large files (avoids the PostgreSQL 1 MB tsvector limit)",
             ManageAppSettingsUseCase.SETTING_MAVEN_REPO_URL,
             "URL of the Maven repository used for dependency resolution (defaults to Maven Central)",
             ManageAppSettingsUseCase.SETTING_MAVEN_REPO_USERNAME,
@@ -51,6 +53,9 @@ public class AppSettingsResource {
             new KnownSetting(
                     ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
                     ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_SCAN_CHUNK_SIZE,
+                    ManageAppSettingsUseCase.DEFAULT_SCAN_CHUNK_SIZE, false),
             new KnownSetting(
                     ManageAppSettingsUseCase.SETTING_MAVEN_REPO_URL,
                     ManageAppSettingsUseCase.DEFAULT_MAVEN_REPO_URL, false),

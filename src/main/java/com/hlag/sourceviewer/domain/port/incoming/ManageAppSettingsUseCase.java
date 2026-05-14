@@ -26,6 +26,12 @@ public interface ManageAppSettingsUseCase {
     /** Default value for {@link #SETTING_SCAN_BATCH_SIZE}. */
     String DEFAULT_SCAN_BATCH_SIZE = "200";
 
+    /** Maximum characters per document chunk when splitting large files for full-text indexing. */
+    String SETTING_SCAN_CHUNK_SIZE = "scan.chunk-size";
+
+    /** Default value for {@link #SETTING_SCAN_CHUNK_SIZE}: 500,000 characters. */
+    String DEFAULT_SCAN_CHUNK_SIZE = "500000";
+
     /** URL of the Maven repository used for dependency resolution. */
     String SETTING_MAVEN_REPO_URL = "maven.repository.url";
 
