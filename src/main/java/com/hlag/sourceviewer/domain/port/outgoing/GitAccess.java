@@ -81,6 +81,13 @@ public interface GitAccess {
     void deleteLocalRepository(Repository repository);
 
     /**
+     * Detects the default branch of the remote repository by querying its refs
+     * without cloning. Returns empty when the remote is unreachable or HEAD is
+     * not a symbolic ref (e.g. a detached HEAD or anonymous remote).
+     */
+    Optional<BranchName> detectDefaultBranch(FilePath remoteUrl);
+
+    /**
      * Returns the most recent commit that touched the given file path on the
      * specified branch, or {@link Optional#empty()} when the file has no commit
      * history (e.g. the repository has not been cloned yet).

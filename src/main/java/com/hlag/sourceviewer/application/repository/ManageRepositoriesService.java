@@ -1,5 +1,7 @@
 package com.hlag.sourceviewer.application.repository;
 
+import com.hlag.sourceviewer.domain.model.identifier.BranchName;
+import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.port.incoming.ManageRepositoriesUseCase;
@@ -51,7 +53,7 @@ public class ManageRepositoriesService implements ManageRepositoriesUseCase {
         var repository = new Repository(
                 command.name(),
                 command.remoteUrl(),
-                command.defaultBranch(),
+                resolveDefaultBranch(command.defaultBranch(), command.remoteUrl()),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty()
@@ -71,10 +73,16 @@ public class ManageRepositoriesService implements ManageRepositoriesUseCase {
                         "Repository not found: " + command.identifier().value()));
         repository.setName(command.name());
         repository.setRemoteUrl(command.remoteUrl().orElse(null));
-        repository.setDefaultBranch(command.defaultBranch());
+        repository.setDefaultBranch(resolveDefaultBranch(command.defaultBranch(), command.remoteUrl()));
         repositoryStore.update(repository);
         logger.info("Updated repository {}", command.identifier().value());
         return repository;
+    }
+
+    private BranchName resolveDefaultBranch(Optional<BranchName> requested, Optional<FilePath> remoteUrl) {
+        return requested
+                .or(() -> remoteUrl.flatMap(gitAccess::detectDefaultBranch))
+                .orElse(new BranchName("main"));
     }
 
     /** @inheritDoc */

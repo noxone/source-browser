@@ -192,7 +192,7 @@ class RepositoryResourceApiTest {
             .statusCode(201);
 
         verify(useCase).createRepository(argThat(cmd ->
-            cmd.defaultBranch().equals(new BranchName("main"))
+            cmd.defaultBranch().isEmpty()
         ));
     }
 
@@ -246,7 +246,7 @@ class RepositoryResourceApiTest {
             .statusCode(201);
 
         verify(useCase).createRepository(argThat((CreateRepositoryCommand cmd) ->
-            cmd.remoteUrl().isEmpty() && cmd.defaultBranch().equals(new BranchName("trunk"))
+            cmd.remoteUrl().isEmpty() && cmd.defaultBranch().map(BranchName::value).orElse("").equals("trunk")
         ));
     }
 

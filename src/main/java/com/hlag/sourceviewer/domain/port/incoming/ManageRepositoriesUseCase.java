@@ -59,12 +59,13 @@ public interface ManageRepositoriesUseCase {
      *
      * @param name          display name, must be unique
      * @param remoteUrl     optional remote URL for cloning or fetching
-     * @param defaultBranch the branch that will be indexed by default
+     * @param defaultBranch the branch that will be indexed by default; empty means
+     *                      auto-detect from the remote (falls back to "main")
      */
     record CreateRepositoryCommand(
             DisplayName name,
             Optional<FilePath> remoteUrl,
-            BranchName defaultBranch
+            Optional<BranchName> defaultBranch
     ) {}
 
     /**
@@ -73,12 +74,13 @@ public interface ManageRepositoriesUseCase {
      * @param identifier    identifies the repository to update
      * @param name          new display name
      * @param remoteUrl     new remote URL, or empty to clear it
-     * @param defaultBranch new default branch
+     * @param defaultBranch new default branch; empty means auto-detect from the
+     *                      remote (falls back to "main")
      */
     record UpdateRepositoryCommand(
             RepositoryIdentifier identifier,
             DisplayName name,
             Optional<FilePath> remoteUrl,
-            BranchName defaultBranch
+            Optional<BranchName> defaultBranch
     ) {}
 }

@@ -92,7 +92,7 @@ public class RepositoryResource {
         var command = new CreateRepositoryCommand(
                 new DisplayName(request.name()),
                 Optional.ofNullable(request.remoteUrl()).filter(s -> !s.isBlank()).map(FilePath::new),
-                new BranchName(request.defaultBranch() != null ? request.defaultBranch() : "main")
+                Optional.ofNullable(request.defaultBranch()).filter(s -> !s.isBlank()).map(BranchName::new)
         );
 
         var created = manageRepositoriesUseCase.createRepository(command);
@@ -112,7 +112,7 @@ public class RepositoryResource {
                 new RepositoryIdentifier(id),
                 new DisplayName(request.name()),
                 Optional.ofNullable(request.remoteUrl()).filter(s -> !s.isBlank()).map(FilePath::new),
-                new BranchName(request.defaultBranch() != null ? request.defaultBranch() : "main")
+                Optional.ofNullable(request.defaultBranch()).filter(s -> !s.isBlank()).map(BranchName::new)
         );
 
         try {

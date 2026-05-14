@@ -16,6 +16,7 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.diff.DiffEntry;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.Ref;
@@ -338,6 +339,24 @@ public class JGitAccess implements GitAccess {
                 treeParser.reset(objectReader, tree.getId());
             }
             return treeParser;
+        }
+    }
+
+    @Override
+    public Optional<BranchName> detectDefaultBranch(FilePath remoteUrl) {
+        try {
+            var refs = Git.lsRemoteRepository()
+                    .setRemote(remoteUrl.value())
+                    .callAsMap();
+            Ref head = refs.get(Constants.HEAD);
+            if (head != null && head.isSymbolic()) {
+                String shortName = org.eclipse.jgit.lib.Repository.shortenRefName(head.getTarget().getName());
+                return Optional.of(new BranchName(shortName));
+            }
+            return Optional.empty();
+        } catch (Exception e) {
+            logger.warn("Could not detect default branch for {}: {}", remoteUrl.value(), e.getMessage());
+            return Optional.empty();
         }
     }
 

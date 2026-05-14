@@ -10,11 +10,11 @@ export interface Repository {
 export interface CreateRepositoryRequest {
   name: string
   remoteUrl: string | null
-  defaultBranch: string
+  defaultBranch: string | null
 }
 
 export interface UpdateRepositoryRequest {
   name: string
   remoteUrl: string | null
-  defaultBranch: string
+  defaultBranch: string | null
 }
