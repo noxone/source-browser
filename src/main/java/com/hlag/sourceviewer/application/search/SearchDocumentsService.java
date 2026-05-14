@@ -1,6 +1,7 @@
 package com.hlag.sourceviewer.application.search;
 
 import com.hlag.sourceviewer.domain.model.identifier.Description;
+import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.search.SearchQuery;
 import com.hlag.sourceviewer.domain.model.search.SearchResult;
 import com.hlag.sourceviewer.domain.port.incoming.SearchDocumentsUseCase;
@@ -31,7 +32,11 @@ public class SearchDocumentsService implements SearchDocumentsUseCase {
 
     @Override
     public List<SearchResult> search(SearchQuery query) {
-        return documentRepository.search(query.searchText().value(), query.maxResults(), query.offset())
+        List<Long> repoIds = query.repositoryIdentifiers().stream()
+                .map(RepositoryIdentifier::value)
+                .toList();
+
+        return documentRepository.search(query.searchText().value(), repoIds, query.maxResults(), query.offset())
                 .stream()
                 .flatMap(match -> sourceFileRepository.findByIdentifier(match.fileIdentifier())
                         .stream()

@@ -1,6 +1,7 @@
 package com.hlag.sourceviewer.adapter.incoming.rest;
 
 import com.hlag.sourceviewer.adapter.incoming.rest.dto.SearchResultDto;
+import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
 import com.hlag.sourceviewer.domain.model.search.SearchQuery;
 import com.hlag.sourceviewer.domain.model.search.SearchResult;
@@ -15,7 +16,6 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 
 import java.util.List;
-import java.util.Optional;
 
 @Path("/api/search")
 @Produces(MediaType.APPLICATION_JSON)
@@ -33,11 +33,17 @@ public class SearchResource {
     public List<SearchResultDto> search(
             @QueryParam("q") String q,
             @QueryParam("maxResults") @DefaultValue("50") int maxResults,
-            @QueryParam("offset") @DefaultValue("0") int offset) {
+            @QueryParam("offset") @DefaultValue("0") int offset,
+            @QueryParam("repoIds") List<Long> repoIds) {
         if (q == null || q.isBlank()) {
             return List.of();
         }
-        var query = new SearchQuery(new SimpleName(q), Optional.empty(), maxResults, offset);
+        List<RepositoryIdentifier> repoIdentifiers = (repoIds == null ? List.<Long>of() : repoIds)
+                .stream()
+                .filter(id -> id != null && id > 0)
+                .map(RepositoryIdentifier::new)
+                .toList();
+        var query = new SearchQuery(new SimpleName(q), repoIdentifiers, maxResults, offset);
         return searchDocumentsUseCase.search(query).stream()
                 .map(this::toDto)
                 .toList();

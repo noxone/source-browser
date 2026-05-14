@@ -31,6 +31,38 @@
           Search
         </button>
       </form>
+
+      <!-- Repository filter pills -->
+      <div v-if="repositories.length > 0" class="mt-3 flex flex-wrap gap-2 items-center">
+        <span class="text-xs text-gray-500 font-medium mr-1">Filter by repo:</span>
+        <button
+          v-for="repo in repositories"
+          :key="repo.id"
+          type="button"
+          @click="toggleRepo(repo.id)"
+          :class="[
+            'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors',
+            selectedRepoIds.includes(repo.id)
+              ? 'bg-indigo-600 text-white border-indigo-600'
+              : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400 hover:text-indigo-600'
+          ]"
+        >{{ repo.name }}</button>
+        <button
+          v-if="selectedRepoIds.length > 0"
+          type="button"
+          @click="selectedRepoIds = []"
+          class="text-xs text-gray-400 hover:text-gray-600 underline ml-1"
+        >Clear</button>
+      </div>
+
+      <!-- Search syntax hints -->
+      <div class="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
+        <span class="font-semibold text-gray-600 mr-2">Search syntax:</span>
+        <code class="font-mono bg-white border border-gray-200 rounded px-1 mr-2">java spring</code> both terms ·
+        <code class="font-mono bg-white border border-gray-200 rounded px-1 mr-2 ml-1">java OR spring</code> either term ·
+        <code class="font-mono bg-white border border-gray-200 rounded px-1 mr-2 ml-1">"exact phrase"</code> phrase match ·
+        <code class="font-mono bg-white border border-gray-200 rounded px-1 ml-1">-deprecated</code> exclude term
+      </div>
     </div>
 
     <!-- Initial state -->
@@ -93,9 +125,17 @@
               </div>
             </td>
 
-            <!-- Found areas / snippet -->
+            <!-- Found areas / snippet with highlighted matches -->
             <td class="px-6 py-4">
-              <span class="font-mono text-sm text-gray-800">{{ result.snippet }}</span>
+              <span class="font-mono text-sm text-gray-800">
+                <template v-for="(seg, si) in parseSnippet(result.snippet)" :key="si">
+                  <mark
+                    v-if="seg.highlighted"
+                    class="bg-yellow-200 text-yellow-900 rounded px-0.5 not-italic"
+                  >{{ seg.text }}</mark>
+                  <span v-else>{{ seg.text }}</span>
+                </template>
+              </span>
             </td>
           </tr>
         </tbody>
@@ -112,9 +152,15 @@
 import { ref, onMounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import type { SearchResult } from '../types/search'
+import type { Repository } from '../types/repository'
 import { search } from '../api/search'
+import { listRepositories } from '../api/repositories'
 
 const PATH_TRUNCATE_LIMIT = 100
+
+// Sentinel characters matching PanacheDocumentRepository.HL_START / HL_STOP
+const HIGHLIGHT_START = ''
+const HIGHLIGHT_STOP  = ''
 
 const route = useRoute()
 const router = useRouter()
@@ -126,12 +172,30 @@ const loading = ref(false)
 const error = ref('')
 const searched = ref(false)
 
-onMounted(() => {
-  const q = route.query.q as string | undefined
-  if (q) {
-    queryInput.value = q
-    runSearch()
+const repositories = ref<Repository[]>([])
+const selectedRepoIds = ref<number[]>([])
+
+onMounted(async () => {
+  // Load repository list for the filter — non-fatal if it fails
+  try {
+    repositories.value = await listRepositories()
+  } catch {
+    // Repo filter stays hidden
   }
+
+  const q = route.query.q as string | undefined
+  const repoIdsParam = route.query.repoIds
+
+  if (q) queryInput.value = q
+
+  if (repoIdsParam) {
+    const ids = (Array.isArray(repoIdsParam) ? repoIdsParam : [repoIdsParam])
+      .map(Number)
+      .filter(n => Number.isFinite(n) && n > 0)
+    selectedRepoIds.value = ids
+  }
+
+  if (q) runSearch()
 })
 
 function truncatePath(path: string, maxLen = PATH_TRUNCATE_LIMIT): string {
@@ -140,12 +204,55 @@ function truncatePath(path: string, maxLen = PATH_TRUNCATE_LIMIT): string {
   return path.slice(0, half) + '…' + path.slice(path.length - half)
 }
 
+function toggleRepo(id: number) {
+  const idx = selectedRepoIds.value.indexOf(id)
+  if (idx >= 0) selectedRepoIds.value.splice(idx, 1)
+  else selectedRepoIds.value.push(id)
+}
+
+interface SnippetSegment {
+  text: string
+  highlighted: boolean
+}
+
+function parseSnippet(raw: string): SnippetSegment[] {
+  const segments: SnippetSegment[] = []
+  let s = raw
+  while (s.length > 0) {
+    const si = s.indexOf(HIGHLIGHT_START)
+    if (si === -1) {
+      segments.push({ text: s, highlighted: false })
+      break
+    }
+    if (si > 0) segments.push({ text: s.slice(0, si), highlighted: false })
+    s = s.slice(si + 1)
+    const ei = s.indexOf(HIGHLIGHT_STOP)
+    if (ei === -1) {
+      segments.push({ text: s, highlighted: false })
+      break
+    }
+    segments.push({ text: s.slice(0, ei), highlighted: true })
+    s = s.slice(ei + 1)
+  }
+  return segments
+}
+
 async function runSearch() {
   const q = queryInput.value.trim()
   if (!q) return
 
-  // Persist the query in the URL so it survives browser back navigation
-  router.replace({ name: 'search', query: { q } })
+  // Persist the query and active repo filter in the URL
+  const repoIdsForUrl = selectedRepoIds.value.length > 0
+    ? selectedRepoIds.value.map(String)
+    : undefined
+
+  router.replace({
+    name: 'search',
+    query: {
+      q,
+      ...(repoIdsForUrl ? { repoIds: repoIdsForUrl } : {}),
+    },
+  })
 
   loading.value = true
   error.value = ''
@@ -153,7 +260,7 @@ async function runSearch() {
   lastQuery.value = q
 
   try {
-    results.value = await search(q)
+    results.value = await search(q, 50, 0, selectedRepoIds.value)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Unknown error'
     results.value = []

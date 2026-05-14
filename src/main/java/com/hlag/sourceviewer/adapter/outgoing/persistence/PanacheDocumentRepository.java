@@ -14,24 +14,54 @@ import java.util.List;
 public class PanacheDocumentRepository
         implements DocumentRepository, PanacheRepositoryBase<Document, Long> {
 
+    // Unicode Private Use Area sentinels — guaranteed to never appear in source code
+    private static final String HL_START = "";
+    private static final String HL_STOP  = "";
+    private static final String HEADLINE_OPTIONS =
+            "MaxWords=30,MinWords=10,MaxFragments=1,StartSel=" + HL_START + ",StopSel=" + HL_STOP;
+
     @Override
     @SuppressWarnings("unchecked")
-    public List<DocumentSearchMatch> search(String text, int maxResults, int offset) {
-        List<Object[]> rows = getEntityManager().createNativeQuery("""
-                SELECT d.file_id,
-                       ts_headline('english', d.content, websearch_to_tsquery('english', :text),
-                           'MaxWords=30,MinWords=10,MaxFragments=1') AS snippet,
-                       ts_rank(d.search_vector, websearch_to_tsquery('english', :text)) AS rank
-                FROM   document d
-                WHERE  d.published = true
-                  AND  d.search_vector @@ websearch_to_tsquery('english', :text)
-                ORDER  BY rank DESC
-                LIMIT  :limit OFFSET :offset
-                """)
-                .setParameter("text", text)
-                .setParameter("limit", maxResults)
-                .setParameter("offset", offset)
-                .getResultList();
+    public List<DocumentSearchMatch> search(String text, List<Long> repositoryIds, int maxResults, int offset) {
+        List<Object[]> rows;
+        if (repositoryIds.isEmpty()) {
+            rows = getEntityManager().createNativeQuery("""
+                    SELECT d.file_id,
+                           ts_headline('simple', d.content, websearch_to_tsquery('simple', :text),
+                               :options) AS snippet,
+                           ts_rank(d.search_vector, websearch_to_tsquery('simple', :text)) AS rank
+                    FROM   document d
+                    WHERE  d.published = true
+                      AND  d.search_vector @@ websearch_to_tsquery('simple', :text)
+                    ORDER  BY rank DESC
+                    LIMIT  :limit OFFSET :offset
+                    """)
+                    .setParameter("text", text)
+                    .setParameter("options", HEADLINE_OPTIONS)
+                    .setParameter("limit", maxResults)
+                    .setParameter("offset", offset)
+                    .getResultList();
+        } else {
+            rows = getEntityManager().createNativeQuery("""
+                    SELECT d.file_id,
+                           ts_headline('simple', d.content, websearch_to_tsquery('simple', :text),
+                               :options) AS snippet,
+                           ts_rank(d.search_vector, websearch_to_tsquery('simple', :text)) AS rank
+                    FROM   document d
+                    JOIN   source_file sf ON sf.id = d.file_id
+                    WHERE  d.published = true
+                      AND  d.search_vector @@ websearch_to_tsquery('simple', :text)
+                      AND  sf.repository_id IN (:repoIds)
+                    ORDER  BY rank DESC
+                    LIMIT  :limit OFFSET :offset
+                    """)
+                    .setParameter("text", text)
+                    .setParameter("options", HEADLINE_OPTIONS)
+                    .setParameter("repoIds", repositoryIds)
+                    .setParameter("limit", maxResults)
+                    .setParameter("offset", offset)
+                    .getResultList();
+        }
         return rows.stream()
                 .map(cols -> new DocumentSearchMatch(
                         new FileIdentifier(((Number) cols[0]).longValue()),

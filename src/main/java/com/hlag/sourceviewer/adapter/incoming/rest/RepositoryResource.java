@@ -70,6 +70,7 @@ public class RepositoryResource {
     }
 
     @GET
+    @Authenticated
     public List<RepositoryDto> listRepositories() {
         return manageRepositoriesUseCase.listRepositories().stream()
                 .map(this::toDto)

@@ -11,8 +11,12 @@ import java.util.List;
  */
 public interface DocumentRepository {
 
-    /** Performs a full-text search and returns ranked matches. */
-    List<DocumentSearchMatch> search(String text, int maxResults, int offset);
+    /**
+     * Performs a full-text search and returns ranked matches.
+     *
+     * @param repositoryIds empty list means "all repositories"
+     */
+    List<DocumentSearchMatch> search(String text, List<Long> repositoryIds, int maxResults, int offset);
 
     /** Removes all document entries for the given file. */
     void deleteByFile(FileIdentifier fileIdentifier);

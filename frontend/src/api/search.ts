@@ -9,11 +9,19 @@ async function handleResponse<T>(response: Response): Promise<T> {
   return response.json()
 }
 
-export async function search(query: string, maxResults = 50, offset = 0): Promise<SearchResult[]> {
+export async function search(
+  query: string,
+  maxResults = 50,
+  offset = 0,
+  repoIds: number[] = [],
+): Promise<SearchResult[]> {
   const params = new URLSearchParams({
     q: query,
     maxResults: String(maxResults),
     offset: String(offset),
   })
+  for (const id of repoIds) {
+    params.append('repoIds', String(id))
+  }
   return handleResponse(await authenticatedFetch(`/api/search?${params}`))
 }

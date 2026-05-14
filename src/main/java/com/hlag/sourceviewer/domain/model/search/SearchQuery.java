@@ -2,16 +2,12 @@ package com.hlag.sourceviewer.domain.model.search;
 
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
-import com.hlag.sourceviewer.domain.model.identifier.*;
 
-import java.util.Optional;
+import java.util.List;
 
-/**
- * A search query for full-text search.
- */
 public record SearchQuery(
         SimpleName searchText,
-        Optional<RepositoryIdentifier> repositoryIdentifier,
+        List<RepositoryIdentifier> repositoryIdentifiers,
         int maxResults,
         int offset
 ) {
@@ -22,11 +18,12 @@ public record SearchQuery(
         if (offset < 0) {
             throw new IllegalArgumentException("offset must not be negative");
         }
+        repositoryIdentifiers = List.copyOf(repositoryIdentifiers);
     }
 
     public static final int DEFAULT_MAX_RESULTS = 50;
 
     public static SearchQuery of(SimpleName searchText) {
-        return new SearchQuery(searchText, Optional.empty(), DEFAULT_MAX_RESULTS, 0);
+        return new SearchQuery(searchText, List.of(), DEFAULT_MAX_RESULTS, 0);
     }
 }

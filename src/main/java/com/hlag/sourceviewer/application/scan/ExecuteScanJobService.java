@@ -304,13 +304,17 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 runInNewTransaction(() -> batchCount.set(batchAction.run(batch)));
                 total += batchCount.get();
                 i += batch.size();
-            } catch (RuntimeException e) {
+            } catch (TransactionTimeoutException e) {
                 if (batch.size() <= 1) {
                     throw e;
                 }
                 currentBatchSize = Math.max(1, currentBatchSize / 2);
                 logger.warn("Batch of {} files timed out for repository '{}' ({} phase) — reducing batch size to {} and retrying",
                         batch.size(), repoName, phase, currentBatchSize);
+            } catch (RuntimeException e) {
+                logger.warn("Batch of {} files failed for repository '{}' ({} phase) — skipping batch",
+                        batch.size(), repoName, phase, e);
+                i += batch.size();
             }
         }
         return total;
@@ -319,6 +323,12 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
     @FunctionalInterface
     private interface BatchAction {
         int run(List<FilePath> batch);
+    }
+
+    private static final class TransactionTimeoutException extends RuntimeException {
+        TransactionTimeoutException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private int indexDocumentBatch(List<FilePath> batch, ScanJob job, Repository repository,
@@ -356,7 +366,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 if (isTransactionRollbackPending()) {
                     logger.error("Exception happened while indexing '{}' in '{}' after {} files — aborting batch",
                             path.value(), repository.name().value(), indexed, e);
-                    throw new RuntimeException("Scan aborted: transaction timeout after " + indexed + " files", e);
+                    throw new TransactionTimeoutException("Scan aborted: transaction timeout after " + indexed + " files", e);
                 }
                 logger.warn("Failed to index file '{}' in repository '{}': {}",
                         path.value(), repository.name().value(), e.getMessage());
@@ -398,7 +408,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 if (isTransactionRollbackPending()) {
                     logger.error("Exception happened while indexing symbols for '{}' in '{}' after {} files — aborting batch",
                             path.value(), repository.name().value(), indexed, e);
-                    throw new RuntimeException("Symbol indexing aborted: transaction timeout after " + indexed + " files", e);
+                    throw new TransactionTimeoutException("Symbol indexing aborted: transaction timeout after " + indexed + " files", e);
                 }
                 logger.warn("Failed to index symbols for '{}' in repository '{}': {}",
                         path.value(), repository.name().value(), e.getMessage());
