@@ -1,6 +1,6 @@
-package com.hlag.sourceviewer.adapter.incoming.rest.dto;
+package com.hlag.sourceviewer.domain.model.query;
 
-public record SymbolDto(
+public record SymbolInfo(
         Long symbolId,
         Long fileId,
         String filePath,

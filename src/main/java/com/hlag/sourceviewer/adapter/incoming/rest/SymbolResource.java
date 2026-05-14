@@ -1,7 +1,7 @@
 package com.hlag.sourceviewer.adapter.incoming.rest;
 
-import com.hlag.sourceviewer.adapter.incoming.rest.dto.SymbolDto;
-import com.hlag.sourceviewer.adapter.incoming.rest.dto.SymbolReferenceDto;
+import com.hlag.sourceviewer.domain.model.query.SymbolInfo;
+import com.hlag.sourceviewer.domain.model.query.SymbolReferenceInfo;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolIdentifier;
 import com.hlag.sourceviewer.domain.port.incoming.GetSymbolDetailsUseCase;
 import io.quarkus.security.Authenticated;
@@ -29,14 +29,14 @@ public class SymbolResource {
 
     @GET
     @Path("/{symbolId}")
-    public SymbolDto getSymbol(@PathParam("symbolId") Long symbolId) {
+    public SymbolInfo getSymbol(@PathParam("symbolId") Long symbolId) {
         return getSymbolDetailsUseCase.getSymbol(new SymbolIdentifier(symbolId))
                 .orElseThrow(() -> new NotFoundException("Symbol not found: " + symbolId));
     }
 
     @GET
     @Path("/{symbolId}/references")
-    public List<SymbolReferenceDto> getReferences(@PathParam("symbolId") Long symbolId) {
+    public List<SymbolReferenceInfo> getReferences(@PathParam("symbolId") Long symbolId) {
         return getSymbolDetailsUseCase.getReferences(new SymbolIdentifier(symbolId));
     }
 }

@@ -1,6 +1,6 @@
 package com.hlag.sourceviewer.adapter.incoming.rest;
 
-import com.hlag.sourceviewer.adapter.incoming.rest.dto.FileInfoDto;
+import com.hlag.sourceviewer.domain.model.query.FileDetails;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.port.incoming.GetFileContentUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.GetFileInfoUseCase;
@@ -65,7 +65,7 @@ public class FileResource {
     @GET
     @Path("/{fileId}/info")
     @Produces(MediaType.APPLICATION_JSON)
-    public FileInfoDto getFileInfo(@PathParam("fileId") Long fileId) {
+    public FileDetails getFileInfo(@PathParam("fileId") Long fileId) {
         return getFileInfoUseCase.getFileInfo(new FileIdentifier(fileId))
                 .orElseThrow(() -> new NotFoundException("File not found: " + fileId));
     }

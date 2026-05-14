@@ -1,6 +1,6 @@
 package com.hlag.sourceviewer.application.scan;
 
-import com.hlag.sourceviewer.adapter.incoming.rest.dto.FileInfoDto;
+import com.hlag.sourceviewer.domain.model.query.FileDetails;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.port.incoming.GetFileInfoUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
@@ -33,7 +33,7 @@ public class GetFileInfoService implements GetFileInfoUseCase {
     }
 
     @Override
-    public Optional<FileInfoDto> getFileInfo(FileIdentifier fileIdentifier) {
+    public Optional<FileDetails> getFileInfo(FileIdentifier fileIdentifier) {
         return sourceFileRepository.findByIdentifier(fileIdentifier).map(sourceFile -> {
             var repository = repositoryStore.findByIdentifier(sourceFile.repositoryIdentifier())
                     .orElse(null);
@@ -60,7 +60,7 @@ public class GetFileInfoService implements GetFileInfoUseCase {
                 }
             }
 
-            return new FileInfoDto(
+            return new FileDetails(
                     fileIdentifier.value(),
                     sourceFile.path().value(),
                     repoName,

@@ -1,7 +1,7 @@
 package com.hlag.sourceviewer.application.resolve;
 
-import com.hlag.sourceviewer.adapter.incoming.rest.dto.SymbolDto;
-import com.hlag.sourceviewer.adapter.incoming.rest.dto.SymbolReferenceDto;
+import com.hlag.sourceviewer.domain.model.query.SymbolInfo;
+import com.hlag.sourceviewer.domain.model.query.SymbolReferenceInfo;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolIdentifier;
 import com.hlag.sourceviewer.domain.port.incoming.GetSymbolDetailsUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
@@ -35,7 +35,7 @@ public class GetSymbolDetailsService implements GetSymbolDetailsUseCase {
     }
 
     @Override
-    public Optional<SymbolDto> getSymbol(SymbolIdentifier symbolIdentifier) {
+    public Optional<SymbolInfo> getSymbol(SymbolIdentifier symbolIdentifier) {
         return symbolRepository.findByIdentifier(symbolIdentifier).map(symbol -> {
             var sourceFile = sourceFileRepository.findByIdentifier(symbol.fileIdentifier()).orElse(null);
             String filePath = sourceFile != null ? sourceFile.path().value() : null;
@@ -44,7 +44,7 @@ public class GetSymbolDetailsService implements GetSymbolDetailsUseCase {
                 repoName = repositoryStore.findByIdentifier(sourceFile.repositoryIdentifier())
                         .map(r -> r.name().value()).orElse(null);
             }
-            return new SymbolDto(
+            return new SymbolInfo(
                     symbol.identifier().value(),
                     symbol.fileIdentifier().value(),
                     filePath,
@@ -60,7 +60,7 @@ public class GetSymbolDetailsService implements GetSymbolDetailsUseCase {
     }
 
     @Override
-    public List<SymbolReferenceDto> getReferences(SymbolIdentifier symbolIdentifier) {
+    public List<SymbolReferenceInfo> getReferences(SymbolIdentifier symbolIdentifier) {
         return symbolReferenceRepository.findBySymbol(symbolIdentifier).stream().map(ref -> {
             var sourceFile = sourceFileRepository.findByIdentifier(ref.fileIdentifier()).orElse(null);
             String filePath = sourceFile != null ? sourceFile.path().value() : null;
@@ -69,7 +69,7 @@ public class GetSymbolDetailsService implements GetSymbolDetailsUseCase {
                 repoName = repositoryStore.findByIdentifier(sourceFile.repositoryIdentifier())
                         .map(r -> r.name().value()).orElse(null);
             }
-            return new SymbolReferenceDto(
+            return new SymbolReferenceInfo(
                     ref.identifier() != null ? ref.identifier().value() : null,
                     ref.fileIdentifier().value(),
                     filePath,

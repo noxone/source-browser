@@ -1,8 +1,8 @@
-package com.hlag.sourceviewer.adapter.incoming.rest.dto;
+package com.hlag.sourceviewer.domain.model.query;
 
 import java.time.Instant;
 
-public record FileInfoDto(
+public record FileDetails(
         Long fileId,
         String filePath,
         String repositoryName,
