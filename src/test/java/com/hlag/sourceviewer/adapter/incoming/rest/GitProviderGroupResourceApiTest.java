@@ -47,7 +47,7 @@ class GitProviderGroupResourceApiTest {
                 "quarkus.datasource.jdbc.url", "jdbc:postgresql://localhost:15432/test_placeholder",
                 "quarkus.datasource.jdbc.min-size", "0",
                 "quarkus.datasource.jdbc.max-size", "1",
-                "quarkus.hibernate-orm.database.generation", "none",
+                "quarkus.hibernate-orm.schema-management.strategy", "none",
                 "quarkus.flyway.enabled", "false"
             );
         }

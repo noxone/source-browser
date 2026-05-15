@@ -22,7 +22,9 @@
       "Bash(grep -E \"\\\\.vue$\")",
       "Bash(xargs cat *)",
       "Bash(./mvnw compile *)",
-      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(mkdir -p /tmp/hibernate-deploy-src)",
+      "Read(//tmp/**)"
     ]
   }
 }
