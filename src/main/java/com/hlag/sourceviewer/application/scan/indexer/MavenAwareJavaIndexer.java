@@ -187,14 +187,14 @@ public class MavenAwareJavaIndexer implements LanguageIndexer {
                 .orElseGet(List::of)
                 .stream()
                 .collect(Collectors.toMap(
-                    dependency -> new ShortArtifact(dependency.getGroupId(), dependency.getArtifactId()),
+                    dependency -> new GroupAndArtifact(dependency.getGroupId(), dependency.getArtifactId()),
                     Dependency::getVersion,
                     (a, b) -> a));
 
             var loadedArtifacts = dependencies.stream()
                 .map(dependency -> {
                     if (dependency.getVersion() == null || dependency.getVersion().isBlank()) {
-                        var art = new ShortArtifact(dependency.getGroupId(), dependency.getArtifactId());
+                        var art = new GroupAndArtifact(dependency.getGroupId(), dependency.getArtifactId());
                         if (dependencyManagement.containsKey(art)) {
                             dependency.setVersion(dependencyManagement.get(art));
                         }
@@ -221,7 +221,7 @@ public class MavenAwareJavaIndexer implements LanguageIndexer {
         }
     }
 
-    private record ShortArtifact(String groupId, String artifactId){}
+    private record GroupAndArtifact(String groupId, String artifactId){}
 
     private Collection<ArtifactResult> resolveWithTransitives(Dependency dependency,RepositorySystem system,DefaultRepositorySystemSession session, List<RemoteRepository> remoteRepositories)
          {

@@ -3,7 +3,7 @@
     <!-- Search bar -->
     <div class="mb-6">
       <h2 class="text-2xl font-bold text-gray-900 mb-4">Search</h2>
-      <form @submit.prevent="runSearch" class="flex gap-2">
+      <form @submit.prevent="runSearch" class="flex gap-2 items-center">
         <div class="relative flex-1">
           <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
             <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -18,6 +18,22 @@
             class="block w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             autofocus
           />
+        </div>
+        <!-- Search syntax info icon -->
+        <div class="relative group flex items-center shrink-0">
+          <svg class="w-4 h-4 text-gray-400 cursor-default hover:text-gray-600 transition-colors" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0-4h.01"/>
+          </svg>
+          <div class="absolute z-20 right-0 top-full mt-1.5 hidden group-hover:block bg-gray-900 text-white text-xs rounded-lg px-3 py-2.5 shadow-xl whitespace-nowrap pointer-events-none">
+            <div class="font-semibold mb-1.5 text-gray-200">Search syntax</div>
+            <div class="space-y-1 font-mono">
+              <div><span class="text-yellow-300">java spring</span><span class="text-gray-400 ml-3">both terms (AND)</span></div>
+              <div><span class="text-yellow-300">java OR spring</span><span class="text-gray-400 ml-3">either term</span></div>
+              <div><span class="text-yellow-300">"exact phrase"</span><span class="text-gray-400 ml-3">phrase match</span></div>
+              <div><span class="text-yellow-300">-deprecated</span><span class="text-gray-400 ml-3">exclude term</span></div>
+            </div>
+          </div>
         </div>
         <button
           type="submit"
@@ -34,13 +50,13 @@
 
       <!-- Repository filter -->
       <div v-if="repositories.length > 0" class="mt-3 flex items-center gap-2">
-        <span class="text-xs text-gray-500 font-medium shrink-0">Filter by repo:</span>
+        <span class="text-xs text-gray-500 font-medium shrink-0 w-32">Filter by repo:</span>
         <RepoMultiSelect :repositories="repositories" v-model="selectedRepoIds" />
       </div>
 
       <!-- File filter -->
       <div class="mt-2 flex items-center gap-2">
-        <div class="relative group flex items-center gap-1 shrink-0">
+        <div class="relative group flex items-center gap-1 shrink-0 w-32">
           <span class="text-xs text-gray-500 font-medium">Filter by file:</span>
           <!-- Info icon -->
           <svg class="w-3.5 h-3.5 text-gray-400 cursor-default" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -64,15 +80,6 @@
           placeholder="e.g. *.java  or  /regex/  or  !*Test.java"
           class="flex-1 rounded-lg border border-gray-300 bg-white py-1.5 px-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
         />
-      </div>
-
-      <!-- Search syntax hints -->
-      <div class="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
-        <span class="font-semibold text-gray-600 mr-2">Search syntax:</span>
-        <code class="font-mono bg-white border border-gray-200 rounded px-1 mr-2">java spring</code> both terms ·
-        <code class="font-mono bg-white border border-gray-200 rounded px-1 mr-2 ml-1">java OR spring</code> either term ·
-        <code class="font-mono bg-white border border-gray-200 rounded px-1 mr-2 ml-1">"exact phrase"</code> phrase match ·
-        <code class="font-mono bg-white border border-gray-200 rounded px-1 ml-1">-deprecated</code> exclude term
       </div>
     </div>
 
