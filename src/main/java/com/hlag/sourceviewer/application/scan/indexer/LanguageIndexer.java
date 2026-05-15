@@ -1,9 +1,8 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
-import com.hlag.sourceviewer.application.scan.JavaFileParser;
+import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
-
 import java.nio.file.Path;
 import java.util.List;
 
@@ -59,5 +58,5 @@ public interface LanguageIndexer {
      * @param context  the context produced by {@link #prepare} for this scan
      * @return parsed declarations and pending references
      */
-    JavaFileParser.ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context);
+    ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context);
 }

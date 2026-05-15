@@ -1,6 +1,7 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
 import com.hlag.sourceviewer.application.scan.JavaFileParser;
+import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
@@ -82,7 +83,7 @@ public abstract class AbstractAntlr4Indexer implements LanguageIndexer {
      * (ANTLR4 indexers do not resolve cross-file references).
      */
     @Override
-    public JavaFileParser.ParsedFile indexFile(FileIdentifier fileId, FilePath path,
+    public ParsedFile indexFile(FileIdentifier fileId, FilePath path,
                                                String content, Object context) {
         try {
             CharStream input = CharStreams.fromString(content);
@@ -93,10 +94,10 @@ public abstract class AbstractAntlr4Indexer implements LanguageIndexer {
             List<ExtractedToken> extracted = mapToExtractedTokens(allTokens);
             List<Symbol> symbols = extractSymbols(allTokens, path, fileId);
 
-            return new JavaFileParser.ParsedFile(symbols, List.of(), extracted);
+            return new ParsedFile(symbols, List.of(), extracted);
         } catch (Exception e) {
             logger.warn("Could not tokenise {}: {}", path.value(), e.getMessage());
-            return new JavaFileParser.ParsedFile(List.of(), List.of(), List.of());
+            return new ParsedFile(List.of(), List.of(), List.of());
         }
     }
 

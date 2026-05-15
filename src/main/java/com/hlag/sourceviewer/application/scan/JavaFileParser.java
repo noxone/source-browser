@@ -67,20 +67,6 @@ public class JavaFileParser {
 
     private static final Logger logger = LoggerFactory.getLogger(JavaFileParser.class);
 
-    public record ParsedFile(List<Symbol> declarations, List<PendingReference> references, List<ExtractedToken> tokens) {
-        static ParsedFile empty() {
-            return new ParsedFile(List.of(), List.of(), List.of());
-        }
-    }
-
-    public record PendingReference(
-            Optional<QualifiedName> resolvedName,
-            Optional<SimpleName> unresolvedName,
-            ReferenceKind kind,
-            Optional<LineNumber> line,
-            Optional<ColumnNumber> column) {
-    }
-
     /**
      * Builds a {@link TypeSolver} for the given repository checkout directory.
      * Walks the directory tree to discover all {@code src/main/java} and

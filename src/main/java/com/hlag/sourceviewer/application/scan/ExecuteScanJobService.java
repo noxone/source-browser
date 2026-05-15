@@ -8,7 +8,6 @@ import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.ErrorMessage;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
-import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
 import com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolIdentifier;
@@ -28,8 +27,8 @@ import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
-import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.TokenStreamRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -39,9 +38,6 @@ import jakarta.transaction.Status;
 import jakarta.transaction.SystemException;
 import jakarta.transaction.Transaction;
 import jakarta.transaction.TransactionManager;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -55,6 +51,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Implementation of {@link ExecuteScanJobUseCase}.
@@ -426,7 +424,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         return indexed;
     }
 
-    private void storeSymbols(JavaFileParser.ParsedFile parsed, FileIdentifier fileId, Long scanJobId) {
+    private void storeSymbols(ParsedFile parsed, FileIdentifier fileId, Long scanJobId) {
         parsed.declarations().forEach(symbol -> symbolRepository.insertUnpublished(symbol, scanJobId));
 
         for (var ref : parsed.references()) {
@@ -447,7 +445,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         }
     }
 
-    private void storeTokenStream(JavaFileParser.ParsedFile parsed, FileIdentifier fileId, Long scanJobId) {
+    private void storeTokenStream(ParsedFile parsed, FileIdentifier fileId, Long scanJobId) {
         if (parsed.tokens().isEmpty()) {
             return;
         }

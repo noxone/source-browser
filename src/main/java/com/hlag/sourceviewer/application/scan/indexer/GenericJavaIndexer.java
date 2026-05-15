@@ -1,11 +1,11 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
 import com.hlag.sourceviewer.application.scan.JavaFileParser;
+import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-
 import java.nio.file.Path;
 import java.util.List;
 
@@ -46,7 +46,7 @@ public class GenericJavaIndexer implements LanguageIndexer {
     }
 
     @Override
-    public JavaFileParser.ParsedFile indexFile(FileIdentifier fileId, FilePath path,
+    public ParsedFile indexFile(FileIdentifier fileId, FilePath path,
                                                String content, Object context) {
         return javaFileParser.parse(fileId, path, content, ((JavaIndexingContext) context).typeSolver());
     }

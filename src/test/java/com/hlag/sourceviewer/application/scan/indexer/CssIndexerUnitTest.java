@@ -1,18 +1,15 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class CssIndexerUnitTest {
 
@@ -145,12 +142,12 @@ class CssIndexerUnitTest {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private com.hlag.sourceviewer.application.scan.JavaFileParser.ParsedFile index(String css) {
+    private com.hlag.sourceviewer.application.scan.ParsedFile index(String css) {
         return indexer.indexFile(FILE_ID, new FilePath("styles.css"), css, null);
     }
 
     private static void assertContainsTokenKind(
-            com.hlag.sourceviewer.application.scan.JavaFileParser.ParsedFile result,
+            com.hlag.sourceviewer.application.scan.ParsedFile result,
             String text, TokenKind expectedKind) {
         assertThat(result.tokens())
                 .as("Expected token '%s' with kind %s", text, expectedKind)
@@ -158,7 +155,7 @@ class CssIndexerUnitTest {
     }
 
     private static List<ExtractedToken> nonWhitespaceTokens(
-            com.hlag.sourceviewer.application.scan.JavaFileParser.ParsedFile result) {
+            com.hlag.sourceviewer.application.scan.ParsedFile result) {
         return result.tokens().stream()
                 .filter(t -> t.kind() != TokenKind.WHITESPACE)
                 .toList();

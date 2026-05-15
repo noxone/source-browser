@@ -1,18 +1,17 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
-import com.hlag.sourceviewer.application.scan.JavaFileParser;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
 import com.hlag.sourceviewer.domain.model.source.Symbol;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 import java.nio.file.Path;
 import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 class TypeScriptIndexerUnitTest {
 
@@ -291,11 +290,11 @@ class TypeScriptIndexerUnitTest {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
-    private JavaFileParser.ParsedFile index(String source) {
+    private ParsedFile index(String source) {
         return indexer.indexFile(FILE_ID, TS_PATH, source, null);
     }
 
-    private static void assertContainsTokenKind(JavaFileParser.ParsedFile result,
+    private static void assertContainsTokenKind(ParsedFile result,
                                                  String text, TokenKind expectedKind) {
         assertThat(result.tokens())
                 .as("Expected token '%s' with kind %s", text, expectedKind)

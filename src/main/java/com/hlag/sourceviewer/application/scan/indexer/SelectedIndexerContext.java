@@ -1,6 +1,6 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
-import com.hlag.sourceviewer.application.scan.JavaFileParser;
+import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 
@@ -11,7 +11,7 @@ public record SelectedIndexerContext(LanguageIndexer indexer, Object context) {
         return indexer.handles(path);
     }
 
-    public JavaFileParser.ParsedFile index(FileIdentifier fileId, FilePath path, String content) {
+    public ParsedFile index(FileIdentifier fileId, FilePath path, String content) {
         return indexer.indexFile(fileId, path, content, context);
     }
 }

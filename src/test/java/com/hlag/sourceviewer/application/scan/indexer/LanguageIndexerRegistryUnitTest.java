@@ -19,7 +19,7 @@ class LanguageIndexerRegistryUnitTest {
     private static final List<FilePath> FILES = List.of(new FilePath("Foo.java"));
 
     private LanguageIndexerRegistry registryWith(LanguageIndexer... indexers) {
-        Instance<LanguageIndexer> instance = mock(Instance.class);
+        Instance<LanguageIndexer> instance = mock();
         when(instance.spliterator()).thenReturn(
                 Spliterators.spliteratorUnknownSize(List.of(indexers).iterator(),
                         Spliterator.ORDERED));
