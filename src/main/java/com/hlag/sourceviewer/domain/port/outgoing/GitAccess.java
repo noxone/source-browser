@@ -93,4 +93,10 @@ public interface GitAccess {
      * history (e.g. the repository has not been cloned yet).
      */
     Optional<CommitInfo> getLastCommitForFile(Repository repository, FilePath path, BranchName branch);
+
+    /**
+     * Returns the byte size of the file at HEAD of the given branch,
+     * or {@link Optional#empty()} when the repository is not locally cloned.
+     */
+    Optional<Long> getFileSizeForFile(Repository repository, FilePath path, BranchName branch);
 }

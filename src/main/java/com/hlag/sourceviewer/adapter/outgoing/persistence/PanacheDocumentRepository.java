@@ -22,46 +22,56 @@ public class PanacheDocumentRepository
 
     @Override
     @SuppressWarnings("unchecked")
-    public List<DocumentSearchMatch> search(String text, List<Long> repositoryIds, int maxResults, int offset) {
-        List<Object[]> rows;
-        if (repositoryIds.isEmpty()) {
-            rows = getEntityManager().createNativeQuery("""
-                    SELECT d.file_id,
-                           ts_headline('simple', d.content, websearch_to_tsquery('simple', :text),
-                               :options) AS snippet,
-                           ts_rank(d.search_vector, websearch_to_tsquery('simple', :text)) AS rank
-                    FROM   document d
-                    WHERE  d.published = true
-                      AND  d.search_vector @@ websearch_to_tsquery('simple', :text)
-                    ORDER  BY rank DESC
-                    LIMIT  :limit OFFSET :offset
-                    """)
-                    .setParameter("text", text)
-                    .setParameter("options", HEADLINE_OPTIONS)
-                    .setParameter("limit", maxResults)
-                    .setParameter("offset", offset)
-                    .getResultList();
-        } else {
-            rows = getEntityManager().createNativeQuery("""
-                    SELECT d.file_id,
-                           ts_headline('simple', d.content, websearch_to_tsquery('simple', :text),
-                               :options) AS snippet,
-                           ts_rank(d.search_vector, websearch_to_tsquery('simple', :text)) AS rank
-                    FROM   document d
-                    JOIN   source_file sf ON sf.id = d.file_id
-                    WHERE  d.published = true
-                      AND  d.search_vector @@ websearch_to_tsquery('simple', :text)
-                      AND  sf.repository_id IN (:repoIds)
-                    ORDER  BY rank DESC
-                    LIMIT  :limit OFFSET :offset
-                    """)
-                    .setParameter("text", text)
-                    .setParameter("options", HEADLINE_OPTIONS)
-                    .setParameter("repoIds", repositoryIds)
-                    .setParameter("limit", maxResults)
-                    .setParameter("offset", offset)
-                    .getResultList();
+    public List<DocumentSearchMatch> search(String text, List<Long> repositoryIds, int maxResults, int offset, String fileFilter) {
+        FileFilterParser.ParsedFilter filter = FileFilterParser.parse(fileFilter);
+        boolean needsJoin = !repositoryIds.isEmpty() || filter.isActive();
+
+        StringBuilder sql = new StringBuilder("""
+                SELECT d.file_id,
+                       ts_headline('simple', d.content, websearch_to_tsquery('simple', :text),
+                           :options) AS snippet,
+                       ts_rank(d.search_vector, websearch_to_tsquery('simple', :text)) AS rank
+                FROM   document d
+                """);
+
+        if (needsJoin) {
+            sql.append("JOIN   source_file sf ON sf.id = d.file_id\n");
         }
+
+        sql.append("""
+                WHERE  d.published = true
+                  AND  d.search_vector @@ websearch_to_tsquery('simple', :text)
+                """);
+
+        if (!repositoryIds.isEmpty()) {
+            sql.append("  AND  sf.repository_id IN (:repoIds)\n");
+        }
+        if (filter.hasInclude()) {
+            sql.append("  AND  sf.path ~* :includePattern\n");
+        }
+        if (filter.hasExclude()) {
+            sql.append("  AND  NOT sf.path ~* :excludePattern\n");
+        }
+
+        sql.append("ORDER  BY rank DESC\nLIMIT  :limit OFFSET :offset");
+
+        var q = getEntityManager().createNativeQuery(sql.toString())
+                .setParameter("text", text)
+                .setParameter("options", HEADLINE_OPTIONS)
+                .setParameter("limit", maxResults)
+                .setParameter("offset", offset);
+
+        if (!repositoryIds.isEmpty()) {
+            q.setParameter("repoIds", repositoryIds);
+        }
+        if (filter.hasInclude()) {
+            q.setParameter("includePattern", filter.includeRegex());
+        }
+        if (filter.hasExclude()) {
+            q.setParameter("excludePattern", filter.excludeRegex());
+        }
+
+        List<Object[]> rows = q.getResultList();
         return rows.stream()
                 .map(cols -> new DocumentSearchMatch(
                         new FileIdentifier(((Number) cols[0]).longValue()),

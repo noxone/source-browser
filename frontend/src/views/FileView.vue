@@ -63,8 +63,15 @@
         <div class="mb-3">
           <p class="font-mono text-xs text-gray-800 break-all leading-relaxed">{{ fileInfo?.filePath ?? '…' }}</p>
           <div class="flex flex-wrap gap-1.5 mt-2">
+            <a
+              v-if="fileInfo?.repositoryName && fileInfo?.repositoryUrl"
+              :href="fileInfo.repositoryUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100"
+            >{{ fileInfo.repositoryName }}</a>
             <span
-              v-if="fileInfo?.repositoryName"
+              v-else-if="fileInfo?.repositoryName"
               class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100"
             >{{ fileInfo.repositoryName }}</span>
             <span
@@ -78,7 +85,10 @@
         <dl class="space-y-2 text-sm">
           <InfoRow v-if="fileInfo" label="Branch" :value="fileInfo.branch" />
           <InfoRow v-if="fileInfo" label="Language" :value="fileInfo.language" />
+          <InfoRow v-if="fileInfo?.fileSize != null" label="Size" :value="formatFileSize(fileInfo.fileSize)" />
           <InfoRow v-if="fileInfo" label="Indexed at" :value="formatDate(fileInfo.indexedAt)" />
+          <InfoRow v-if="fileInfo?.lastCommitSha" label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
+          <InfoRow v-if="fileInfo?.lastCommitDate" label="Commit date" :value="formatDate(fileInfo.lastCommitDate)" />
         </dl>
         <p v-if="!fileInfo && !loading" class="text-xs text-gray-400 italic">Loading…</p>
       </div>
@@ -87,7 +97,7 @@
       <div v-if="fileInfo?.lastCommitSha" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Last Commit</h3>
         <dl class="space-y-2 text-sm">
-          <InfoRow label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" mono />
+          <InfoRow label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
           <InfoRow v-if="fileInfo.lastAuthorName" label="Author" :value="fileInfo.lastAuthorName" />
           <InfoRow v-if="fileInfo.lastAuthorEmail" label="Email" :value="fileInfo.lastAuthorEmail" />
           <InfoRow v-if="fileInfo.lastCommitDate" label="Date" :value="formatDate(fileInfo.lastCommitDate)" />
@@ -202,11 +212,15 @@ import { getFileInfo, getFileContent, getTokenStream, getSymbol, getSymbolRefere
 
 /** Simple label+value display row used inside the info panel. */
 const InfoRow = {
-  props: { label: String, value: String, mono: Boolean },
+  props: { label: String, value: String, mono: Boolean, href: String },
   template: `
     <div>
       <dt class="text-xs text-gray-400 mb-0.5">{{ label }}</dt>
-      <dd :class="['text-gray-700 break-all', mono ? 'font-mono text-xs' : '']">{{ value }}</dd>
+      <dd :class="['text-gray-700 break-all', mono ? 'font-mono text-xs' : '']">
+        <a v-if="href" :href="href" target="_blank" rel="noopener noreferrer"
+           class="text-indigo-600 hover:underline">{{ value }}</a>
+        <template v-else>{{ value }}</template>
+      </dd>
     </div>
   `
 }
@@ -378,4 +392,17 @@ function formatDate(iso: string): string {
     return iso
   }
 }
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const commitUrl = computed<string | null>(() => {
+  const sha = fileInfo.value?.lastCommitSha
+  const url = fileInfo.value?.repositoryUrl
+  if (!sha || !url) return null
+  return `${url.replace(/\.git$/, '')}/commit/${sha}`
+})
 </script>

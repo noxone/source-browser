@@ -21,7 +21,8 @@
       "Bash(./mvnw test *)",
       "Bash(grep -E \"\\\\.vue$\")",
       "Bash(xargs cat *)",
-      "Bash(./mvnw compile *)"
+      "Bash(./mvnw compile *)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")"
     ]
   }
 }

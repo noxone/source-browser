@@ -14,5 +14,7 @@ public record FileDetails(
         String lastAuthorName,
         String lastAuthorEmail,
         Instant lastCommitDate,
-        String lastCommitMessage
+        String lastCommitMessage,
+        Long fileSize,
+        String repositoryUrl
 ) {}

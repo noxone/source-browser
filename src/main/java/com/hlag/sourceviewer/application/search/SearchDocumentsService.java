@@ -36,7 +36,7 @@ public class SearchDocumentsService implements SearchDocumentsUseCase {
                 .map(RepositoryIdentifier::value)
                 .toList();
 
-        return documentRepository.search(query.searchText().value(), repoIds, query.maxResults(), query.offset())
+        return documentRepository.search(query.searchText().value(), repoIds, query.maxResults(), query.offset(), query.fileFilter())
                 .stream()
                 .flatMap(match -> sourceFileRepository.findByIdentifier(match.fileIdentifier())
                         .stream()

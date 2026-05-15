@@ -14,6 +14,7 @@ export async function search(
   maxResults = 50,
   offset = 0,
   repoIds: number[] = [],
+  fileFilter?: string,
 ): Promise<SearchResult[]> {
   const params = new URLSearchParams({
     q: query,
@@ -22,6 +23,9 @@ export async function search(
   })
   for (const id of repoIds) {
     params.append('repoIds', String(id))
+  }
+  if (fileFilter) {
+    params.set('fileFilter', fileFilter)
   }
   return handleResponse(await authenticatedFetch(`/api/search?${params}`))
 }

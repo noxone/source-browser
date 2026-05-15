@@ -38,6 +38,34 @@
         <RepoMultiSelect :repositories="repositories" v-model="selectedRepoIds" />
       </div>
 
+      <!-- File filter -->
+      <div class="mt-2 flex items-center gap-2">
+        <div class="relative group flex items-center gap-1 shrink-0">
+          <span class="text-xs text-gray-500 font-medium">Filter by file:</span>
+          <!-- Info icon -->
+          <svg class="w-3.5 h-3.5 text-gray-400 cursor-default" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0-4h.01"/>
+          </svg>
+          <!-- Tooltip -->
+          <div class="absolute z-20 left-0 top-full mt-1.5 hidden group-hover:block bg-gray-900 text-white text-xs rounded-lg px-3 py-2.5 shadow-xl whitespace-nowrap pointer-events-none">
+            <div class="font-semibold mb-1.5 text-gray-200">File filter syntax</div>
+            <div class="space-y-1 font-mono">
+              <div><span class="text-yellow-300">*.java</span><span class="text-gray-400 ml-3">glob — </span><span class="text-gray-300">* crosses path separators</span></div>
+              <div><span class="text-yellow-300">/.*Service.*/</span><span class="text-gray-400 ml-3">regex between slashes</span></div>
+              <div><span class="text-yellow-300">!*.java</span><span class="text-gray-400 ml-3">! prefix negates any pattern</span></div>
+              <div><span class="text-yellow-300">*.java, !*Test.java</span><span class="text-gray-400 ml-3">comma = multiple patterns</span></div>
+            </div>
+          </div>
+        </div>
+        <input
+          v-model="fileFilterInput"
+          type="text"
+          placeholder="e.g. *.java  or  /regex/  or  !*Test.java"
+          class="flex-1 rounded-lg border border-gray-300 bg-white py-1.5 px-3 text-sm text-gray-900 placeholder-gray-400 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
+        />
+      </div>
+
       <!-- Search syntax hints -->
       <div class="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500">
         <span class="font-semibold text-gray-600 mr-2">Search syntax:</span>
@@ -158,6 +186,7 @@ const searched = ref(false)
 
 const repositories = ref<Repository[]>([])
 const selectedRepoIds = ref<number[]>([])
+const fileFilterInput = ref('')
 
 onMounted(async () => {
   // Load repository list for the filter — non-fatal if it fails
@@ -169,6 +198,7 @@ onMounted(async () => {
 
   const q = route.query.q as string | undefined
   const repoIdsParam = route.query.repoIds
+  const fileFilterParam = route.query.fileFilter as string | undefined
 
   if (q) queryInput.value = q
 
@@ -177,6 +207,10 @@ onMounted(async () => {
       .map(Number)
       .filter(n => Number.isFinite(n) && n > 0)
     selectedRepoIds.value = ids
+  }
+
+  if (fileFilterParam) {
+    fileFilterInput.value = fileFilterParam
   }
 
   if (q) runSearch()
@@ -219,16 +253,18 @@ async function runSearch() {
   const q = queryInput.value.trim()
   if (!q) return
 
-  // Persist the query and active repo filter in the URL
+  // Persist the query, repo filter, and file filter in the URL
   const repoIdsForUrl = selectedRepoIds.value.length > 0
     ? selectedRepoIds.value.map(String)
     : undefined
+  const fileFilterForUrl = fileFilterInput.value.trim() || undefined
 
   router.replace({
     name: 'search',
     query: {
       q,
       ...(repoIdsForUrl ? { repoIds: repoIdsForUrl } : {}),
+      ...(fileFilterForUrl ? { fileFilter: fileFilterForUrl } : {}),
     },
   })
 
@@ -238,7 +274,7 @@ async function runSearch() {
   lastQuery.value = q
 
   try {
-    results.value = await search(q, 50, 0, selectedRepoIds.value)
+    results.value = await search(q, 50, 0, selectedRepoIds.value, fileFilterForUrl)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Unknown error'
     results.value = []

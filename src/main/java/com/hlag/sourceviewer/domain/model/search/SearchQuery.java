@@ -9,7 +9,8 @@ public record SearchQuery(
         SimpleName searchText,
         List<RepositoryIdentifier> repositoryIdentifiers,
         int maxResults,
-        int offset
+        int offset,
+        String fileFilter
 ) {
     public SearchQuery {
         if (maxResults <= 0) {
@@ -24,6 +25,6 @@ public record SearchQuery(
     public static final int DEFAULT_MAX_RESULTS = 50;
 
     public static SearchQuery of(SimpleName searchText) {
-        return new SearchQuery(searchText, List.of(), DEFAULT_MAX_RESULTS, 0);
+        return new SearchQuery(searchText, List.of(), DEFAULT_MAX_RESULTS, 0, null);
     }
 }

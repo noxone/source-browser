@@ -47,6 +47,8 @@ public class GetFileInfoService implements GetFileInfoUseCase {
             java.time.Instant lastCommitDate = null;
             String lastCommitMessage = null;
 
+            Long fileSize = null;
+            String repositoryUrl = null;
             if (repository != null) {
                 var commitInfo = gitAccess.getLastCommitForFile(
                         repository, sourceFile.path(), sourceFile.branch());
@@ -58,6 +60,8 @@ public class GetFileInfoService implements GetFileInfoUseCase {
                     lastCommitDate = info.commitDate();
                     lastCommitMessage = info.message();
                 }
+                fileSize = gitAccess.getFileSizeForFile(repository, sourceFile.path(), sourceFile.branch()).orElse(null);
+                repositoryUrl = repository.remoteUrl().map(url -> url.value()).orElse(null);
             }
 
             return new FileDetails(
@@ -72,7 +76,9 @@ public class GetFileInfoService implements GetFileInfoUseCase {
                     lastAuthorName,
                     lastAuthorEmail,
                     lastCommitDate,
-                    lastCommitMessage
+                    lastCommitMessage,
+                    fileSize,
+                    repositoryUrl
             );
         });
     }

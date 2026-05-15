@@ -392,4 +392,30 @@ public class JGitAccess implements GitAccess {
             return Optional.empty();
         }
     }
+
+    @Override
+    public Optional<Long> getFileSizeForFile(Repository repository, FilePath path, BranchName branch) {
+        if (!localRepositoryExists(repository)) {
+            return Optional.empty();
+        }
+        try (org.eclipse.jgit.lib.Repository gitRepository = openGitRepository(repository)) {
+            ObjectId ref = gitRepository.resolve("refs/remotes/origin/" + branch.value());
+            if (ref == null) {
+                return Optional.empty();
+            }
+            try (RevWalk revWalk = new RevWalk(gitRepository)) {
+                RevTree tree = revWalk.parseCommit(ref).getTree();
+                try (TreeWalk treeWalk = TreeWalk.forPath(gitRepository, path.value(), tree)) {
+                    if (treeWalk == null) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(gitRepository.open(treeWalk.getObjectId(0)).getSize());
+                }
+            }
+        } catch (IOException exception) {
+            logger.warn("Failed to get file size for {} in {}: {}",
+                    path.value(), repository.name().value(), exception.getMessage());
+            return Optional.empty();
+        }
+    }
 }

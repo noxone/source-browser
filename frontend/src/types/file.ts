@@ -11,6 +11,8 @@ export interface FileInfo {
   lastAuthorEmail: string | null
   lastCommitDate: string | null
   lastCommitMessage: string | null
+  fileSize: number | null
+  repositoryUrl: string | null
 }
 
 /** A single lexical token from the compressed token stream. */

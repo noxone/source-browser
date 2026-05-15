@@ -34,7 +34,8 @@ public class SearchResource {
             @QueryParam("q") String q,
             @QueryParam("maxResults") @DefaultValue("50") int maxResults,
             @QueryParam("offset") @DefaultValue("0") int offset,
-            @QueryParam("repoIds") List<Long> repoIds) {
+            @QueryParam("repoIds") List<Long> repoIds,
+            @QueryParam("fileFilter") String fileFilter) {
         if (q == null || q.isBlank()) {
             return List.of();
         }
@@ -43,7 +44,8 @@ public class SearchResource {
                 .filter(id -> id != null && id > 0)
                 .map(RepositoryIdentifier::new)
                 .toList();
-        var query = new SearchQuery(new SimpleName(q), repoIdentifiers, maxResults, offset);
+        String normalizedFileFilter = (fileFilter == null || fileFilter.isBlank()) ? null : fileFilter.strip();
+        var query = new SearchQuery(new SimpleName(q), repoIdentifiers, maxResults, offset, normalizedFileFilter);
         return searchDocumentsUseCase.search(query).stream()
                 .map(this::toDto)
                 .toList();

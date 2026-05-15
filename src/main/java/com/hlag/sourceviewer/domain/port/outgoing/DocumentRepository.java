@@ -15,8 +15,9 @@ public interface DocumentRepository {
      * Performs a full-text search and returns ranked matches.
      *
      * @param repositoryIds empty list means "all repositories"
+     * @param fileFilter    null means no file filter; otherwise a raw filter string (glob/regex/negation)
      */
-    List<DocumentSearchMatch> search(String text, List<Long> repositoryIds, int maxResults, int offset);
+    List<DocumentSearchMatch> search(String text, List<Long> repositoryIds, int maxResults, int offset, String fileFilter);
 
     /** Removes all document entries for the given file. */
     void deleteByFile(FileIdentifier fileIdentifier);
