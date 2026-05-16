@@ -27,7 +27,7 @@
 
         <!-- Libraries -->
         <javaparser.version>3.28.1</javaparser.version>
-        <jgit.version>6.10.1.202505221210-r</jgit.version>
+        <jgit.version>7.6.0.202603022253-r</jgit.version>
         <archunit.version>1.4.2</archunit.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <maven.resolver.version>1.9.22</maven.resolver.version>
