@@ -939,6 +939,159 @@
 
     </div> <!-- end settings tab -->
 
+    <!-- ════════════════════════════════════════════════════════════════════════
+         Tab: Javadoc Providers
+         ════════════════════════════════════════════════════════════════════════ -->
+    <div v-show="activeTab === 'javadoc'">
+
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h2 class="text-xl font-semibold text-gray-900">Javadoc Providers</h2>
+          <p class="mt-1 text-sm text-gray-500">
+            Configure external Javadoc links shown in the symbol info panel.
+            Use <code class="font-mono bg-gray-100 px-1 rounded">{classPath}</code> and
+            <code class="font-mono bg-gray-100 px-1 rounded">{anchor}</code> as placeholders in the URL template.
+          </p>
+        </div>
+        <button
+          @click="openAddJavadocModal"
+          class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add Provider
+        </button>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="javadocLoading" class="flex items-center justify-center py-16 text-gray-400">
+        <svg class="animate-spin w-6 h-6 mr-3" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+        </svg>
+        Loading…
+      </div>
+
+      <!-- Error -->
+      <div v-else-if="javadocLoadError" class="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
+        <p class="font-semibold">Failed to load Javadoc providers</p>
+        <p class="mt-1">{{ javadocLoadError }}</p>
+        <button @click="fetchJavadocProviders" class="mt-3 underline hover:no-underline">Try again</button>
+      </div>
+
+      <!-- Empty state -->
+      <div v-else-if="javadocProviders.length === 0" class="flex flex-col items-center justify-center py-24 text-center">
+        <div class="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center mb-4">
+          <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+          </svg>
+        </div>
+        <h3 class="text-base font-semibold text-gray-900">No Javadoc providers configured</h3>
+        <p class="mt-1 text-sm text-gray-500">Add a provider to show Javadoc links in the symbol info panel.</p>
+        <button
+          @click="openAddJavadocModal"
+          class="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+          </svg>
+          Add Provider
+        </button>
+      </div>
+
+      <!-- Table -->
+      <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-32">Order</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Package Prefix</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">URL Template</th>
+              <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            <tr v-for="provider in javadocProviders" :key="provider.id" class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4 text-sm text-gray-500">{{ provider.sortOrder }}</td>
+              <td class="px-6 py-4 text-sm font-medium text-gray-900">{{ provider.name }}</td>
+              <td class="px-6 py-4">
+                <span class="font-mono text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded">{{ provider.packagePrefix }}</span>
+              </td>
+              <td class="px-6 py-4 font-mono text-xs text-gray-500 max-w-xs truncate" :title="provider.urlTemplate">
+                {{ provider.urlTemplate }}
+              </td>
+              <td class="px-6 py-4 text-right">
+                <div class="flex items-center justify-end gap-2">
+                  <button
+                    @click="openEditJavadocModal(provider)"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >Edit</button>
+                  <button
+                    @click="deleteJavadocProviderEntry(provider)"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                  >Delete</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Add / Edit modal -->
+      <div v-if="showJavadocFormModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-xl mx-4 p-6">
+          <h3 class="text-base font-semibold text-gray-900 mb-5">
+            {{ editingJavadocProvider ? 'Edit Javadoc Provider' : 'Add Javadoc Provider' }}
+          </h3>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Name</label>
+              <input v-model="javadocForm.name" type="text" placeholder="e.g. JDK 21"
+                class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Package Prefix</label>
+              <input v-model="javadocForm.packagePrefix" type="text" placeholder="e.g. java."
+                class="w-full px-3 py-2 text-sm font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+              <p class="mt-1 text-xs text-gray-400">All classes whose FQN starts with this prefix will use this provider.</p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">URL Template</label>
+              <input v-model="javadocForm.urlTemplate" type="text"
+                placeholder="https://example.com/api/{classPath}.html{anchor}"
+                class="w-full px-3 py-2 text-sm font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+              <p class="mt-1 text-xs text-gray-400">
+                <code class="bg-gray-100 px-1 rounded">{classPath}</code> is replaced with the class path (e.g. <code class="bg-gray-100 px-1 rounded">java/lang/String</code>).
+                <code class="bg-gray-100 px-1 rounded">{anchor}</code> is replaced with the method anchor (e.g. <code class="bg-gray-100 px-1 rounded">#equals(Object)</code>) or left empty.
+              </p>
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-gray-700 mb-1">Sort Order</label>
+              <input v-model.number="javadocForm.sortOrder" type="number" min="0"
+                class="w-32 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"/>
+              <p class="mt-1 text-xs text-gray-400">Lower numbers are checked first (more specific prefixes take precedence regardless).</p>
+            </div>
+            <div v-if="javadocFormError" class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {{ javadocFormError }}
+            </div>
+          </div>
+          <div class="flex justify-end gap-3 mt-6">
+            <button @click="closeJavadocFormModal"
+              class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
+              Cancel
+            </button>
+            <button @click="saveJavadocProvider" :disabled="javadocFormSaving"
+              class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+              {{ javadocFormSaving ? 'Saving…' : (editingJavadocProvider ? 'Save Changes' : 'Add Provider') }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div> <!-- end javadoc providers tab -->
+
     <RepositoryFormModal
       v-if="showRepoFormModal"
       :repository="editingRepository"
@@ -1010,6 +1163,8 @@ import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
 import { listServiceAccounts, deleteServiceAccount } from '../api/service-accounts'
 import { listScanJobs, deleteScanJob, deleteAllQueuedScanJobs } from '../api/scan-jobs'
 import { listSettings, updateSetting } from '../api/settings'
+import type { JavadocProvider } from '../types/javadoc-provider'
+import { listJavadocProviders, createJavadocProvider, updateJavadocProvider, deleteJavadocProvider } from '../api/javadoc'
 import RepositoryFormModal from '../components/RepositoryFormModal.vue'
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal.vue'
 import GitProviderGroupFormModal from '../components/GitProviderGroupFormModal.vue'
@@ -1021,11 +1176,12 @@ import ServiceAccountTokensModal from '../components/ServiceAccountTokensModal.v
 // ── Tab navigation ────────────────────────────────────────────────────────────
 
 const tabs = [
-  { id: 'repositories',    label: 'Repositories'    },
-  { id: 'users',           label: 'Users'           },
+  { id: 'repositories',    label: 'Repositories'     },
+  { id: 'users',           label: 'Users'            },
   { id: 'serviceaccounts', label: 'Service Accounts' },
-  { id: 'scanjobs',        label: 'Scan Jobs'       },
-  { id: 'settings',        label: 'Settings'        }
+  { id: 'scanjobs',        label: 'Scan Jobs'        },
+  { id: 'settings',        label: 'Settings'         },
+  { id: 'javadoc',         label: 'Javadoc Providers'},
 ] as const
 
 type TabId = typeof tabs[number]['id']
@@ -1552,5 +1708,98 @@ async function saveSettingValue(key: string) {
 
 function isSettingDirty(key: string): boolean {
   return key in settingsDirty.value && settingsDirty.value[key] !== settings.value.find(s => s.key === key)?.value
+}
+
+// ── Javadoc Providers ─────────────────────────────────────────────────────────
+
+const javadocProviders = ref<JavadocProvider[]>([])
+const javadocLoading = ref(false)
+const javadocLoadError = ref('')
+
+const showJavadocFormModal = ref(false)
+const editingJavadocProvider = ref<JavadocProvider | undefined>(undefined)
+const javadocForm = ref({ name: '', packagePrefix: '', urlTemplate: '', sortOrder: 0 })
+const javadocFormError = ref('')
+const javadocFormSaving = ref(false)
+
+watch(activeTab, (tab) => {
+  if (tab === 'javadoc') fetchJavadocProviders()
+})
+
+async function fetchJavadocProviders() {
+  javadocLoading.value = true
+  javadocLoadError.value = ''
+  try {
+    javadocProviders.value = await listJavadocProviders()
+  } catch (error) {
+    javadocLoadError.value = error instanceof Error ? error.message : 'Unknown error'
+  } finally {
+    javadocLoading.value = false
+  }
+}
+
+function openAddJavadocModal() {
+  editingJavadocProvider.value = undefined
+  javadocForm.value = { name: '', packagePrefix: '', urlTemplate: '', sortOrder: 0 }
+  javadocFormError.value = ''
+  showJavadocFormModal.value = true
+}
+
+function openEditJavadocModal(provider: JavadocProvider) {
+  editingJavadocProvider.value = provider
+  javadocForm.value = {
+    name: provider.name,
+    packagePrefix: provider.packagePrefix,
+    urlTemplate: provider.urlTemplate,
+    sortOrder: provider.sortOrder,
+  }
+  javadocFormError.value = ''
+  showJavadocFormModal.value = true
+}
+
+function closeJavadocFormModal() {
+  showJavadocFormModal.value = false
+  editingJavadocProvider.value = undefined
+}
+
+async function saveJavadocProvider() {
+  javadocFormError.value = ''
+  const { name, packagePrefix, urlTemplate, sortOrder } = javadocForm.value
+  if (!name.trim() || !packagePrefix.trim() || !urlTemplate.trim()) {
+    javadocFormError.value = 'All fields are required.'
+    return
+  }
+  if (!urlTemplate.includes('{classPath}')) {
+    javadocFormError.value = 'URL template must contain the {classPath} placeholder.'
+    return
+  }
+  javadocFormSaving.value = true
+  try {
+    const data = { name: name.trim(), packagePrefix: packagePrefix.trim(), urlTemplate: urlTemplate.trim(), sortOrder }
+    if (editingJavadocProvider.value) {
+      const updated = await updateJavadocProvider(editingJavadocProvider.value.id, data)
+      const idx = javadocProviders.value.findIndex(p => p.id === updated.id)
+      if (idx >= 0) javadocProviders.value[idx] = updated
+    } else {
+      const created = await createJavadocProvider(data)
+      javadocProviders.value.push(created)
+      javadocProviders.value.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
+    }
+    closeJavadocFormModal()
+  } catch (error) {
+    javadocFormError.value = error instanceof Error ? error.message : 'Failed to save provider'
+  } finally {
+    javadocFormSaving.value = false
+  }
+}
+
+async function deleteJavadocProviderEntry(provider: JavadocProvider) {
+  if (!confirm(`Delete Javadoc provider "${provider.name}" (${provider.packagePrefix})?`)) return
+  try {
+    await deleteJavadocProvider(provider.id)
+    javadocProviders.value = javadocProviders.value.filter(p => p.id !== provider.id)
+  } catch (error) {
+    alert(error instanceof Error ? error.message : 'Failed to delete provider')
+  }
 }
 </script>
