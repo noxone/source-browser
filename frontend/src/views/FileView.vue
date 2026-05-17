@@ -143,6 +143,18 @@
             <InfoRow label="Name" :value="symbolInfo.simpleName" mono />
             <InfoRow label="Qualified name" :value="symbolInfo.qualifiedName" mono />
             <InfoRow v-if="symbolInfo.signature" label="Signature" :value="symbolInfo.signature" mono />
+            <div v-if="javadocUrl">
+              <dt class="text-xs text-gray-400 mb-0.5">Javadoc</dt>
+              <dd>
+                <a :href="javadocUrl" target="_blank" rel="noopener noreferrer"
+                   class="text-indigo-600 hover:text-indigo-800 text-xs hover:underline inline-flex items-center gap-1">
+                  Open Javadoc
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                </a>
+              </dd>
+            </div>
             <div v-if="symbolInfo.filePath">
               <dt class="text-xs text-gray-400 mb-0.5">Defined in</dt>
               <dd>
@@ -163,6 +175,18 @@
           <dl class="space-y-2 text-sm">
             <InfoRow label="Text" :value="selectedToken.t" mono />
             <InfoRow v-if="selectedToken.q" label="Qualified name" :value="selectedToken.q" mono />
+            <div v-if="javadocUrl">
+              <dt class="text-xs text-gray-400 mb-0.5">Javadoc</dt>
+              <dd>
+                <a :href="javadocUrl" target="_blank" rel="noopener noreferrer"
+                   class="text-indigo-600 hover:text-indigo-800 text-xs hover:underline inline-flex items-center gap-1">
+                  Open Javadoc
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                </a>
+              </dd>
+            </div>
           </dl>
           <div class="mt-2 text-xs text-indigo-400">
             Line {{ selectedToken.l }}, col {{ selectedToken.cs }}–{{ selectedToken.ce }}
@@ -208,7 +232,10 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import type { FileInfo, Token, TokenKind, SymbolInfo, SymbolReference } from '../types/file'
+import type { JavadocProvider } from '../types/javadoc-provider'
 import { getFileInfo, getFileContent, getTokenStream, getSymbol, getSymbolReferences } from '../api/files'
+import { listJavadocProviders } from '../api/javadoc'
+import { buildJavadocUrl } from '../utils/javadocUrl'
 
 /** Simple label+value display row used inside the info panel. */
 const InfoRow = {
@@ -239,6 +266,7 @@ const symbolLoading = ref(false)
 const references = ref<SymbolReference[]>([])
 const referencesLoading = ref(false)
 const referencesError = ref('')
+const javadocProviders = ref<JavadocProvider[]>([])
 
 // ── Data loading ─────────────────────────────────────────────────────
 
@@ -266,7 +294,10 @@ async function load(id: number) {
   }
 }
 
-onMounted(() => load(fileId.value))
+onMounted(() => {
+  load(fileId.value)
+  listJavadocProviders().then(p => { javadocProviders.value = p }).catch(() => {})
+})
 watch(fileId, (newId) => load(newId))
 
 // ── Token selection ───────────────────────────────────────────────────
@@ -398,6 +429,21 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
+
+const javadocUrl = computed<string | null>(() => {
+  if (symbolInfo.value) {
+    return buildJavadocUrl(
+      symbolInfo.value.qualifiedName,
+      symbolInfo.value.kind,
+      symbolInfo.value.signature,
+      javadocProviders.value
+    )
+  }
+  if (selectedToken.value?.q) {
+    return buildJavadocUrl(selectedToken.value.q, 'CLASS', null, javadocProviders.value)
+  }
+  return null
+})
 
 const commitUrl = computed<string | null>(() => {
   const sha = fileInfo.value?.lastCommitSha
