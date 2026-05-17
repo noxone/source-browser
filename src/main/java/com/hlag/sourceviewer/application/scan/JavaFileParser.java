@@ -84,11 +84,13 @@ public class JavaFileParser {
      * so callers can append additional solvers (e.g. {@code JarTypeSolver} for Maven artifacts).
      */
     public CombinedTypeSolver buildCombinedTypeSolver(Path repoLocalPath) {
-        var solver = new CombinedTypeSolver();
+        var solver = new CombinedTypeSolver(CombinedTypeSolver.ExceptionHandlers.IGNORE_UNSUPPORTED_AND_UNSOLVED);
         solver.add(new ReflectionTypeSolver(false));
+        var java21ParserConfig = new ParserConfiguration()
+                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21);
         List<Path> sourceRoots = findSourceRoots(repoLocalPath);
         sourceRoots.forEach(root -> {
-            solver.add(new JavaParserTypeSolver(root));
+            solver.add(new JavaParserTypeSolver(root, java21ParserConfig));
             logger.debug("Added JavaParserTypeSolver for {}", root);
         });
         if (sourceRoots.isEmpty()) {
@@ -142,6 +144,7 @@ public class JavaFileParser {
     public ParsedFile parse(FileIdentifier fileId, FilePath filePath, String content, TypeSolver typeSolver) {
         try {
             var config = new ParserConfiguration()
+                    .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_21)
                     .setSymbolResolver(new JavaSymbolSolver(typeSolver));
             var result = new JavaParser(config).parse(content);
             if (result.getResult().isEmpty()) {
@@ -363,7 +366,13 @@ public class JavaFileParser {
             boolean parentIsNewExpr = n.getParentNode()
                     .filter(p -> p instanceof ObjectCreationExpr)
                     .isPresent();
-            if (!parentIsNewExpr) {
+            // Skip scope qualifiers of a parent ClassOrInterfaceType (e.g. the "com.github.javaparser.ast"
+            // parts of "com.github.javaparser.ast.Node") — only the outermost type is a meaningful reference.
+            boolean isQualifierScope = n.getParentNode()
+                    .filter(p -> p instanceof ClassOrInterfaceType ptype
+                            && ptype.getScope().filter(s -> s == n).isPresent())
+                    .isPresent();
+            if (!parentIsNewExpr && !isQualifierScope) {
                 addRef(kindForType(n), n,
                         () -> {
                             var resolved = n.resolve();
@@ -410,6 +419,7 @@ public class JavaFileParser {
                 references.add(new PendingReference(
                         Optional.of(new QualifiedName(qn)), Optional.empty(), kind, line, col));
             } catch (Exception e) {
+                logger.trace("Could not resolve {} '{}': {}", kind, fallback, e.getMessage());
                 if (!fallback.isBlank()) {
                     references.add(new PendingReference(
                             Optional.empty(), Optional.of(new SimpleName(fallback)), kind, line, col));
