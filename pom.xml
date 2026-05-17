@@ -31,7 +31,7 @@
         <archunit.version>1.4.2</archunit.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <maven.resolver.version>1.9.22</maven.resolver.version>
-        <maven.version>3.9.9</maven.version>
+        <maven.version>3.9.16</maven.version>
         <antlr4.version>4.13.2</antlr4.version>
 
         <!-- Build plugins -->
