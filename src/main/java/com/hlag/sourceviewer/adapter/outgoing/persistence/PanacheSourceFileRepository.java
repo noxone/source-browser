@@ -11,12 +11,32 @@ import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @ApplicationScoped
 public class PanacheSourceFileRepository
         implements SourceFileRepository, PanacheRepositoryBase<SourceFile, Long> {
+
+    @Override
+    public long countAll() {
+        return count();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public Map<Long, Long> countPerRepository() {
+        List<Object[]> rows = getEntityManager()
+                .createNativeQuery("SELECT repository_id, COUNT(*) FROM source_file GROUP BY repository_id")
+                .getResultList();
+        Map<Long, Long> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+        return result;
+    }
 
     @Override
     public Optional<SourceFile> findByIdentifier(FileIdentifier identifier) {

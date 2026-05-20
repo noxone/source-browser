@@ -53,4 +53,7 @@ public interface SymbolRepository {
 
     /** Deletes all unpublished symbols for the given scan job (cleanup on failure). */
     void deleteUnpublishedByScanJob(Long scanJobId);
+
+    /** Returns the total number of published symbols. */
+    long countPublished();
 }

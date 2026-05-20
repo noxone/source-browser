@@ -355,7 +355,12 @@ public class JavaFileParser {
         @Override
         public void visit(ObjectCreationExpr n, Void arg) {
             addRef(ReferenceKind.CONSTRUCTOR_CALL, n,
-                    () -> n.resolve().declaringType().getQualifiedName(),
+                    () -> {
+                        var resolved = n.getType().resolve();
+                        return resolved.isReferenceType()
+                                ? resolved.asReferenceType().getQualifiedName()
+                                : resolved.describe();
+                    },
                     n.getType().getNameAsString());
             super.visit(n, arg);
         }
