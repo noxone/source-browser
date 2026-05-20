@@ -98,4 +98,9 @@ public class PanacheSymbolRepository
     public void deleteUnpublishedByScanJob(Long scanJobId) {
         delete("scanJobId = ?1 AND published = false", scanJobId);
     }
+
+    @Override
+    public long countPublished() {
+        return count("published = true");
+    }
 }

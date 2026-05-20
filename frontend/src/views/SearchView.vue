@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="flex flex-col min-h-full">
     <!-- Search bar -->
     <div class="mb-6">
       <h2 class="text-2xl font-bold text-gray-900 mb-4">Search</h2>
@@ -83,13 +83,37 @@
       </div>
     </div>
 
-    <!-- Initial state -->
-    <div v-if="!searched" class="flex flex-col items-center justify-center py-24 text-center text-gray-400">
-      <svg class="w-14 h-14 mb-4 text-gray-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-        <circle cx="11" cy="11" r="8"/>
-        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/>
-      </svg>
-      <p class="text-sm">Enter a symbol name to search across all indexed repositories.</p>
+    <!-- Initial state: indexed repos overview -->
+    <div v-if="!searched" class="flex-1">
+      <div v-if="indexStats && indexStats.repositories.length > 0">
+        <h3 class="text-sm font-semibold text-gray-700 mb-3">Indexed repositories</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div
+            v-for="repo in indexStats.repositories"
+            :key="repo.id"
+            class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm"
+          >
+            <span class="text-sm font-medium text-gray-800 truncate">{{ repo.name }}</span>
+            <span class="ml-2 shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
+              {{ repo.fileCount.toLocaleString() }} files
+            </span>
+          </div>
+        </div>
+      </div>
+      <div v-else-if="!indexStats" class="flex flex-col items-center justify-center py-24 text-center text-gray-400">
+        <svg class="w-14 h-14 mb-4 text-gray-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/>
+        </svg>
+        <p class="text-sm">Enter a symbol name to search across all indexed repositories.</p>
+      </div>
+      <div v-else class="flex flex-col items-center justify-center py-24 text-center text-gray-400">
+        <svg class="w-14 h-14 mb-4 text-gray-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/>
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35"/>
+        </svg>
+        <p class="text-sm">No repositories have been indexed yet.</p>
+      </div>
     </div>
 
     <!-- Error state -->
@@ -163,6 +187,17 @@
         <span class="font-medium text-gray-600">{{ lastQuery }}</span>
       </div>
     </div>
+    <!-- Sticky stats footer -->
+    <div
+      v-if="indexStats"
+      class="sticky bottom-0 mt-6 -mx-8 px-8 py-2 bg-white border-t border-gray-200 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500"
+    >
+      <span class="font-medium text-gray-600">Index:</span>
+      <span><span class="font-medium text-gray-700">{{ indexStats.totalFiles.toLocaleString() }}</span> files</span>
+      <span><span class="font-medium text-gray-700">{{ indexStats.totalDocuments.toLocaleString() }}</span> documents</span>
+      <span><span class="font-medium text-gray-700">{{ indexStats.totalSymbols.toLocaleString() }}</span> symbols</span>
+      <span><span class="font-medium text-gray-700">{{ indexStats.totalReferences.toLocaleString() }}</span> references</span>
+    </div>
   </div>
 </template>
 
@@ -171,8 +206,10 @@ import { ref, onMounted } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import type { SearchResult } from '../types/search'
 import type { Repository } from '../types/repository'
+import type { IndexStats } from '../types/stats'
 import { search } from '../api/search'
 import { listRepositories } from '../api/repositories'
+import { getIndexStats } from '../api/stats'
 import RepoMultiSelect from '../components/RepoMultiSelect.vue'
 
 const PATH_TRUNCATE_LIMIT = 100
@@ -194,13 +231,19 @@ const searched = ref(false)
 const repositories = ref<Repository[]>([])
 const selectedRepoIds = ref<number[]>([])
 const fileFilterInput = ref('')
+const indexStats = ref<IndexStats | null>(null)
 
 onMounted(async () => {
-  // Load repository list for the filter — non-fatal if it fails
+  // Load repository list for the filter and index stats — non-fatal if they fail
   try {
     repositories.value = await listRepositories()
   } catch {
     // Repo filter stays hidden
+  }
+  try {
+    indexStats.value = await getIndexStats()
+  } catch {
+    // Stats footer stays hidden
   }
 
   const q = route.query.q as string | undefined

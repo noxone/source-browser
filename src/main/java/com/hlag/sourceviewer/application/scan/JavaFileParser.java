@@ -142,7 +142,8 @@ public class JavaFileParser {
     public ParsedFile parse(FileIdentifier fileId, FilePath filePath, String content, TypeSolver typeSolver) {
         try {
             var config = new ParserConfiguration()
-                    .setSymbolResolver(new JavaSymbolSolver(typeSolver));
+                    .setSymbolResolver(new JavaSymbolSolver(typeSolver))
+                    	.setLanguageLevel(ParserConfiguration.LanguageLevel.BLEEDING_EDGE);
             var result = new JavaParser(config).parse(content);
             if (result.getResult().isEmpty()) {
                 logger.warn("No parse result for {}", filePath.value());
@@ -352,7 +353,12 @@ public class JavaFileParser {
         @Override
         public void visit(ObjectCreationExpr n, Void arg) {
             addRef(ReferenceKind.CONSTRUCTOR_CALL, n,
-                    () -> n.resolve().declaringType().getQualifiedName(),
+                    () -> {
+                        var resolved = n.getType().resolve();
+                        return resolved.isReferenceType()
+                                ? resolved.asReferenceType().getQualifiedName()
+                                : resolved.describe();
+                    },
                     n.getType().getNameAsString());
             super.visit(n, arg);
         }
