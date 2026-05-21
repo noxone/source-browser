@@ -105,7 +105,6 @@ public class PomFileLoader {
     request.setModelResolver(modelResolver);
     request.setActiveProfileIds(List.of());
     request.setProcessPlugins(false);
-    request.setTwoPhaseBuilding(true);
 
     final ModelBuildingResult result;
     try {
