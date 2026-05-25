@@ -15,6 +15,7 @@ import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
 import com.hlag.sourceviewer.domain.port.incoming.ManageAppSettingsUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TokenHoverRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.TokenStreamRepository;
 import jakarta.transaction.TransactionManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,6 +49,7 @@ class ExecuteScanJobServiceUnitTest {
     private ManageAppSettingsUseCase manageAppSettings;
     private LanguageIndexerRegistry languageIndexerRegistry;
     private TokenStreamRepository tokenStreamRepository;
+    private TokenHoverRepository tokenHoverRepository;
     private ExecuteScanJobService service;
 
     @BeforeEach
@@ -63,6 +65,7 @@ class ExecuteScanJobServiceUnitTest {
         manageAppSettings = mock(ManageAppSettingsUseCase.class);
         languageIndexerRegistry = mock(LanguageIndexerRegistry.class);
         tokenStreamRepository = mock(TokenStreamRepository.class);
+        tokenHoverRepository = mock(TokenHoverRepository.class);
         when(manageAppSettings.getSetting(
                 ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE))
@@ -76,7 +79,8 @@ class ExecuteScanJobServiceUnitTest {
                 scanJobRepository, repositoryStore, gitAccess,
                 sourceFileRepository, documentRepository, transactionManager,
                 symbolRepository, symbolReferenceRepository,
-                manageAppSettings, languageIndexerRegistry, tokenStreamRepository);
+                manageAppSettings, languageIndexerRegistry,
+                tokenStreamRepository, tokenHoverRepository);
     }
 
     // ── tryExecuteNextJob — no job available ──────────────────────────────────

@@ -1,5 +1,6 @@
 package com.hlag.sourceviewer.application.lsp;
 
+import com.hlag.sourceviewer.domain.model.source.TokenHoverEntry;
 import org.eclipse.lsp4j.ClientCapabilities;
 import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
@@ -29,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -131,16 +133,54 @@ public class LspServerProcess implements AutoCloseable {
     }
 
     /**
-     * Queries the LSP for hover information at the given 0-based position.
-     * Opens the document, queries, then closes it.
+     * Queries hover and definition info for a batch of token positions in a single file.
+     * The document is opened once, all positions queried sequentially, then closed.
+     *
+     * <p>Each entry in the returned list corresponds to the position at the same index in
+     * {@code zeroBasedPositions}. Entries where the LSP returned no data are omitted —
+     * the list may be shorter than the input.</p>
+     *
+     * @param zeroBasedPositions each element is {@code int[]{line, col}} (0-based, LSP convention)
+     * @return non-null list of hover entries that have at least markdown or a definition
      */
-    public synchronized Optional<String> hover(String uri, String content, int zeroBasedLine, int zeroBasedColumn) {
+    public synchronized List<TokenHoverEntry> collectTokenHovers(
+            String uri, String content, List<int[]> zeroBasedPositions) {
         lastAccessed = Instant.now();
+        List<TokenHoverEntry> results = new ArrayList<>();
         try {
             openDocument(uri, content);
+            for (int[] pos : zeroBasedPositions) {
+                int line = pos[0];
+                int col  = pos[1];
+                String markdown = queryHoverAt(uri, line, col).orElse(null);
+                Location def    = queryDefinitionAt(uri, line, col).orElse(null);
+
+                String defPath = null;
+                Integer defLine = null;
+                Integer defCol  = null;
+                if (def != null) {
+                    defPath = def.getUri();
+                    defLine = def.getRange().getStart().getLine() + 1;
+                    defCol  = def.getRange().getStart().getCharacter() + 1;
+                }
+                if (markdown != null || defPath != null) {
+                    // +1 converts back to 1-based domain convention
+                    results.add(new TokenHoverEntry(line + 1, col + 1, markdown, defPath, defLine, defCol));
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("collectTokenHovers failed for {}: {}", uri, e.getMessage());
+        } finally {
+            closeDocument(uri);
+        }
+        return results;
+    }
+
+    private Optional<String> queryHoverAt(String uri, int zeroBasedLine, int zeroBasedCol) {
+        try {
             HoverParams params = new HoverParams(
                     new TextDocumentIdentifier(uri),
-                    new Position(zeroBasedLine, zeroBasedColumn));
+                    new Position(zeroBasedLine, zeroBasedCol));
             var hover = server.getTextDocumentService()
                     .hover(params)
                     .get(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -154,27 +194,19 @@ public class LspServerProcess implements AutoCloseable {
             }
             return Optional.empty();
         } catch (TimeoutException e) {
-            logger.warn("hover timed out for {} at {}:{}", uri, zeroBasedLine, zeroBasedColumn);
+            logger.warn("hover timed out for {} at {}:{}", uri, zeroBasedLine, zeroBasedCol);
             return Optional.empty();
         } catch (Exception e) {
-            logger.warn("hover failed for {}: {}", uri, e.getMessage());
+            logger.warn("hover failed for {} at {}:{}: {}", uri, zeroBasedLine, zeroBasedCol, e.getMessage());
             return Optional.empty();
-        } finally {
-            closeDocument(uri);
         }
     }
 
-    /**
-     * Queries the LSP for the definition location of the symbol at the given 0-based position.
-     * Opens the document, queries, then closes it.
-     */
-    public synchronized Optional<Location> definition(String uri, String content, int zeroBasedLine, int zeroBasedColumn) {
-        lastAccessed = Instant.now();
+    private Optional<Location> queryDefinitionAt(String uri, int zeroBasedLine, int zeroBasedCol) {
         try {
-            openDocument(uri, content);
             DefinitionParams params = new DefinitionParams(
                     new TextDocumentIdentifier(uri),
-                    new Position(zeroBasedLine, zeroBasedColumn));
+                    new Position(zeroBasedLine, zeroBasedCol));
             var result = server.getTextDocumentService()
                     .definition(params)
                     .get(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -197,13 +229,11 @@ public class LspServerProcess implements AutoCloseable {
             }
             return Optional.empty();
         } catch (TimeoutException e) {
-            logger.warn("definition timed out for {} at {}:{}", uri, zeroBasedLine, zeroBasedColumn);
+            logger.warn("definition timed out for {} at {}:{}", uri, zeroBasedLine, zeroBasedCol);
             return Optional.empty();
         } catch (Exception e) {
-            logger.warn("definition failed for {}: {}", uri, e.getMessage());
+            logger.warn("definition failed for {} at {}:{}: {}", uri, zeroBasedLine, zeroBasedCol, e.getMessage());
             return Optional.empty();
-        } finally {
-            closeDocument(uri);
         }
     }
 

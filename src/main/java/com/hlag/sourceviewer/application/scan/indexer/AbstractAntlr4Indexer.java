@@ -93,10 +93,10 @@ public abstract class AbstractAntlr4Indexer implements LanguageIndexer {
             List<ExtractedToken> extracted = mapToExtractedTokens(allTokens);
             List<Symbol> symbols = extractSymbols(allTokens, path, fileId);
 
-            return new ParsedFile(symbols, List.of(), extracted);
+            return new ParsedFile(symbols, List.of(), extracted, List.of());
         } catch (Exception e) {
             logger.warn("Could not tokenise {}: {}", path.value(), e.getMessage());
-            return new ParsedFile(List.of(), List.of(), List.of());
+            return new ParsedFile(List.of(), List.of(), List.of(), List.of());
         }
     }
 

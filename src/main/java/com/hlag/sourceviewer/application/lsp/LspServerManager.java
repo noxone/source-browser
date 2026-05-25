@@ -86,6 +86,18 @@ public class LspServerManager {
         });
     }
 
+    /**
+     * Shuts down the LSP server for the given language and workspace, if one is running.
+     * Called by indexers at the end of each scan so no processes linger between scans.
+     */
+    public void shutdown(String language, Path workspacePath) {
+        LspKey key = new LspKey(language, workspacePath);
+        LspServerProcess proc = servers.remove(key);
+        if (proc != null) {
+            proc.close();
+        }
+    }
+
     /** Shuts down all managed LSP server processes. Called on application shutdown. */
     @PreDestroy
     void shutdownAll() {

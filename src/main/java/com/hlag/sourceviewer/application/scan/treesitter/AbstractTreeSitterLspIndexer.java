@@ -15,6 +15,7 @@ import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.Symbol;
+import com.hlag.sourceviewer.domain.model.source.TokenHoverEntry;
 import org.eclipse.lsp4j.DocumentSymbol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -84,8 +85,33 @@ public abstract class AbstractTreeSitterLspIndexer implements LanguageIndexer {
 
         LspServerProcess lsp = (LspServerProcess) context;
         List<Symbol> symbols = extractSymbols(lsp, fileId, path, content);
+        List<TokenHoverEntry> hoverEntries = collectHoverEntries(lsp, path, content, tokens);
 
-        return new ParsedFile(symbols, List.of(), tokens);
+        return new ParsedFile(symbols, List.of(), tokens, hoverEntries);
+    }
+
+    /** Shuts down the LSP server for this language/workspace after the scan completes. */
+    @Override
+    public void cleanup(Object context) {
+        if (context instanceof LspServerProcess proc) {
+            lspServerManager.shutdown(proc.language(), proc.workspacePath());
+        }
+    }
+
+    private List<TokenHoverEntry> collectHoverEntries(LspServerProcess lsp, FilePath path,
+                                                       String content, List<ExtractedToken> tokens) {
+        if (lsp == null || !lsp.isAlive()) {
+            return List.of();
+        }
+        List<int[]> positions = tokens.stream()
+                .filter(t -> t.kind() == ExtractedToken.TokenKind.IDENTIFIER)
+                .map(t -> new int[]{t.line() - 1, t.columnStart() - 1})
+                .toList();
+        if (positions.isEmpty()) {
+            return List.of();
+        }
+        String uri = toFileUri(lsp.workspacePath(), path);
+        return lsp.collectTokenHovers(uri, content, positions);
     }
 
     private List<Symbol> extractSymbols(LspServerProcess lsp, FileIdentifier fileId,

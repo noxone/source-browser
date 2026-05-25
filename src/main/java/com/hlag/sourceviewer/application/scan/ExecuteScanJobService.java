@@ -29,6 +29,7 @@ import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TokenHoverRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.TokenStreamRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -88,6 +89,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
     private final ManageAppSettingsUseCase manageAppSettings;
     private final LanguageIndexerRegistry languageIndexerRegistry;
     private final TokenStreamRepository tokenStreamRepository;
+    private final TokenHoverRepository tokenHoverRepository;
 
     @Inject
     public ExecuteScanJobService(
@@ -101,7 +103,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             SymbolReferenceRepository symbolReferenceRepository,
             ManageAppSettingsUseCase manageAppSettings,
             LanguageIndexerRegistry languageIndexerRegistry,
-            TokenStreamRepository tokenStreamRepository) {
+            TokenStreamRepository tokenStreamRepository,
+            TokenHoverRepository tokenHoverRepository) {
         this.scanJobRepository = scanJobRepository;
         this.repositoryStore = repositoryStore;
         this.gitAccess = gitAccess;
@@ -113,6 +116,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         this.manageAppSettings = manageAppSettings;
         this.languageIndexerRegistry = languageIndexerRegistry;
         this.tokenStreamRepository = tokenStreamRepository;
+        this.tokenHoverRepository = tokenHoverRepository;
     }
 
     /**
@@ -414,6 +418,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 var parsed = matchingContext.get().index(fileId, path, contentOpt.get());
                 storeSymbols(parsed, fileId, scanJobId);
                 storeTokenStream(parsed, fileId, scanJobId);
+                storeHoverData(parsed, fileId, scanJobId);
                 indexed++;
             } catch (Exception e) {
                 if (isTransactionRollbackPending()) {
@@ -501,6 +506,13 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         tokenStreamRepository.storeUnpublished(fileId, enriched, scanJobId);
     }
 
+    private void storeHoverData(ParsedFile parsed, FileIdentifier fileId, Long scanJobId) {
+        if (parsed.hoverEntries().isEmpty()) {
+            return;
+        }
+        tokenHoverRepository.storeUnpublished(fileId, parsed.hoverEntries(), scanJobId);
+    }
+
     private void activateDocuments(ScanJobIdentifier identifier, Repository repository, CommitSha targetSha) {
         Long scanJobId = identifier.value();
         symbolRepository.publishByScanJob(scanJobId);
@@ -511,6 +523,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         documentRepository.deleteSupersededDocuments(scanJobId);
         tokenStreamRepository.publishByScanJob(scanJobId);
         tokenStreamRepository.deleteSupersededByScanJob(scanJobId);
+        tokenHoverRepository.publishByScanJob(scanJobId);
+        tokenHoverRepository.deleteSupersededByScanJob(scanJobId);
         repository.setLastCommitSha(targetSha);
         repository.setLastScannedAt(Instant.now());
         repositoryStore.update(repository);
