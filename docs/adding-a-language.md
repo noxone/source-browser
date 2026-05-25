@@ -1,5 +1,121 @@
 # Adding a New Language Indexer
 
+There are two indexer approaches available:
+
+| Approach | When to use |
+|---|---|
+| **TreeSitter + LSP** | "Real" programming languages (Java, TypeScript, Kotlin, …) |
+| **ANTLR4** | Configuration or markup languages without an LSP (CSS, HTML, …) |
+
+---
+
+## Approach A: TreeSitter + LSP (recommended for programming languages)
+
+This approach gives you accurate syntax highlighting via TreeSitter and rich symbol
+extraction via a Language Server.
+
+### Prerequisites
+
+1. A compiled TreeSitter grammar `.so` file (see `docs/treesitter-lsp-setup.md`).
+2. A running LSP server for the language.
+
+### Step 1 — Compile the TreeSitter grammar
+
+```bash
+git clone --depth=1 https://github.com/tree-sitter/tree-sitter-kotlin /tmp/ts-kotlin
+gcc -shared -fPIC -O2 \
+    -o /opt/treesitter-grammars/libtree-sitter-kotlin.so \
+    /tmp/ts-kotlin/src/parser.c \
+    /tmp/ts-kotlin/src/scanner.c \
+    -I/tmp/ts-kotlin/src
+```
+
+### Step 2 — Add the LSP server command to `LspServerManager`
+
+In `application/lsp/LspServerManager.java`, add a case to `buildCommand()`:
+
+```java
+case "kotlin" -> List.of("kotlin-language-server");
+```
+
+### Step 3 — Create the indexer class
+
+```java
+package com.hlag.sourceviewer.application.scan.treesitter;
+
+import ch.usi.si.seart.treesitter.Language;
+import ch.usi.si.seart.treesitter.Node;
+import com.hlag.sourceviewer.application.lsp.LspServerManager;
+import com.hlag.sourceviewer.domain.model.identifier.FilePath;
+import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.*;
+
+@ApplicationScoped
+public class KotlinTreeSitterLspIndexer extends AbstractTreeSitterLspIndexer {
+
+    private final String grammarsDir;
+
+    @Inject
+    public KotlinTreeSitterLspIndexer(
+            LspServerManager lspServerManager,
+            @ConfigProperty(name = "sourceviewer.treesitter.grammars.dir",
+                    defaultValue = "/opt/treesitter-grammars")
+            String grammarsDir) {
+        super(lspServerManager);
+        this.grammarsDir = grammarsDir;
+    }
+
+    @Override public String supportedLanguage() { return "kotlin"; }
+    @Override public int priority() { return 100; }
+    @Override public boolean handles(FilePath path) { return "kt".equals(path.extension()); }
+
+    @Override
+    protected Language loadLanguage() {
+        return Language.load(grammarsDir + "/libtree-sitter-kotlin.so");
+    }
+
+    @Override
+    protected TokenKind mapNodeKind(Node node) {
+        if (!node.isNamed()) {
+            // Anonymous nodes: keywords, operators, separators
+            // Add language-specific keywords and operators here
+            return switch (node.getType()) {
+                case "fun", "val", "var", "class", "object", "interface" -> KEYWORD;
+                case "(", ")", "{", "}", "[", "]", ";", "," -> SEPARATOR;
+                default -> OTHER;
+            };
+        }
+        return switch (node.getType()) {
+            case "line_comment", "multiline_comment" -> LINE_COMMENT;
+            case "string_literal" -> STRING_LITERAL;
+            case "integer_literal" -> INTEGER_LITERAL;
+            case "identifier" -> IDENTIFIER;
+            default -> OTHER;
+        };
+    }
+}
+```
+
+CDI auto-discovers the bean. No further registration is needed.
+
+### Step 4 — Write tests
+
+```java
+class KotlinTreeSitterLspIndexerUnitTest {
+    @Test void supported_language_is_kotlin() { ... }
+    @Test void handles_kt_files() { ... }
+    // See JavaTreeSitterLspIndexerUnitTest for the pattern
+}
+```
+
+---
+
+## Approach B: ANTLR4 (for languages without an LSP)
+
 This guide explains how to add syntax highlighting and optional symbol recognition for a
 new programming language using the ANTLR4-based indexer framework.
 

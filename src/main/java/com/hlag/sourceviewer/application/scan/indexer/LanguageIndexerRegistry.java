@@ -33,6 +33,14 @@ public class LanguageIndexerRegistry {
     }
 
     /**
+     * Releases resources held by all contexts after a scan has completed.
+     * Calls {@link LanguageIndexer#cleanup} on each selected indexer.
+     */
+    public void cleanupAll(Map<String, SelectedIndexerContext> contexts) {
+        contexts.values().forEach(SelectedIndexerContext::cleanup);
+    }
+
+    /**
      * Selects one indexer per language, calls {@link LanguageIndexer#prepare} on each
      * selected indexer, and returns the resulting contexts keyed by language token.
      */

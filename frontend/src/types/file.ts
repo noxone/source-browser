@@ -72,3 +72,11 @@ export interface SymbolReference {
   line: number | null
   columnStart: number | null
 }
+
+/** Result of an LSP hover + definition query for a token position. */
+export interface LspHoverResult {
+  markdownContent: string | null
+  definitionFilePath: string | null
+  definitionLine: number | null
+  definitionColumn: number | null
+}

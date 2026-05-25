@@ -269,9 +269,13 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         Map<String, SelectedIndexerContext> indexerContexts =
                 languageIndexerRegistry.selectAndPrepare(repoLocalPath, toIndex);
 
-        if (!indexerContexts.isEmpty()) {
-            runBatchLoop(toIndex, repository.name().value(), "symbol",
-                    batch -> indexSymbolBatch(batch, job, repository, targetSha, indexerContexts));
+        try {
+            if (!indexerContexts.isEmpty()) {
+                runBatchLoop(toIndex, repository.name().value(), "symbol",
+                        batch -> indexSymbolBatch(batch, job, repository, targetSha, indexerContexts));
+            }
+        } finally {
+            languageIndexerRegistry.cleanupAll(indexerContexts);
         }
 
         runInNewTransaction(() ->

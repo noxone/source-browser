@@ -194,6 +194,34 @@
         </template>
       </div>
 
+      <!-- LSP hover box (shown when a token is selected and LSP info is available) -->
+      <div v-if="selectedToken" class="rounded-xl border border-emerald-100 bg-emerald-50 shadow-sm p-4">
+        <h3 class="text-xs font-semibold text-emerald-700 uppercase tracking-wider mb-2">LSP Info</h3>
+        <div v-if="lspHoverLoading" class="flex items-center gap-2 text-xs text-emerald-500 py-1">
+          <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+          Querying LSP…
+        </div>
+        <template v-else-if="lspHover">
+          <div v-if="lspHover.markdownContent"
+               class="text-xs text-gray-700 font-mono whitespace-pre-wrap break-all bg-white rounded p-2 border border-emerald-100 mb-2">
+            {{ lspHover.markdownContent }}
+          </div>
+          <div v-if="lspHover.definitionFilePath">
+            <dt class="text-xs text-gray-400 mb-0.5">Go to definition</dt>
+            <dd class="text-xs font-mono text-emerald-700 break-all">
+              {{ lspHover.definitionFilePath }}
+              <span v-if="lspHover.definitionLine != null">:{{ lspHover.definitionLine }}</span>
+            </dd>
+          </div>
+          <div v-if="!lspHover.markdownContent && !lspHover.definitionFilePath"
+               class="text-xs text-gray-400 italic">No LSP info at this position.</div>
+        </template>
+        <div v-else class="text-xs text-gray-400 italic">LSP unavailable for this file.</div>
+      </div>
+
       <!-- References box (shown when selected token has a symbol ID) -->
       <div v-if="selectedToken?.s != null" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">References</h3>
@@ -231,9 +259,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import type { FileInfo, Token, TokenKind, SymbolInfo, SymbolReference } from '../types/file'
+import type { FileInfo, Token, TokenKind, SymbolInfo, SymbolReference, LspHoverResult } from '../types/file'
 import type { JavadocProvider } from '../types/javadoc-provider'
-import { getFileInfo, getFileContent, getTokenStream, getSymbol, getSymbolReferences } from '../api/files'
+import { getFileInfo, getFileContent, getTokenStream, getSymbol, getSymbolReferences, getLspHover } from '../api/files'
 import { listJavadocProviders } from '../api/javadoc'
 import { buildJavadocUrl } from '../utils/javadocUrl'
 
@@ -267,6 +295,8 @@ const references = ref<SymbolReference[]>([])
 const referencesLoading = ref(false)
 const referencesError = ref('')
 const javadocProviders = ref<JavadocProvider[]>([])
+const lspHover = ref<LspHoverResult | null>(null)
+const lspHoverLoading = ref(false)
 
 // ── Data loading ─────────────────────────────────────────────────────
 
@@ -307,6 +337,7 @@ function clearSelection() {
   symbolInfo.value = null
   references.value = []
   referencesError.value = ''
+  lspHover.value = null
 }
 
 async function selectToken(token: Token) {
@@ -314,30 +345,42 @@ async function selectToken(token: Token) {
   symbolInfo.value = null
   references.value = []
   referencesError.value = ''
+  lspHover.value = null
+
+  const currentFileId = fileInfo.value?.fileId
+
+  // Fetch DB symbol data and LSP hover data in parallel
+  const tasks: Promise<void>[] = []
 
   if (token.s != null) {
-    // Fetch symbol details and references in parallel
     symbolLoading.value = true
     referencesLoading.value = true
-
-    const [symbolResult, refsResult] = await Promise.allSettled([
-      getSymbol(token.s),
-      getSymbolReferences(token.s),
-    ])
-
-    symbolLoading.value = false
-    referencesLoading.value = false
-
-    if (symbolResult.status === 'fulfilled') {
-      symbolInfo.value = symbolResult.value
-    }
-    if (refsResult.status === 'fulfilled') {
-      references.value = refsResult.value
-    } else {
-      referencesError.value = refsResult.reason instanceof Error
-        ? refsResult.reason.message : 'Failed to load references'
-    }
+    tasks.push(
+      Promise.allSettled([
+        getSymbol(token.s),
+        getSymbolReferences(token.s),
+      ]).then(([symbolResult, refsResult]) => {
+        symbolLoading.value = false
+        referencesLoading.value = false
+        if (symbolResult.status === 'fulfilled') symbolInfo.value = symbolResult.value
+        if (refsResult.status === 'fulfilled') references.value = refsResult.value
+        else referencesError.value = refsResult.reason instanceof Error
+          ? refsResult.reason.message : 'Failed to load references'
+      }),
+    )
   }
+
+  if (currentFileId != null) {
+    lspHoverLoading.value = true
+    tasks.push(
+      getLspHover(currentFileId, token.l, token.cs)
+        .then(result => { lspHover.value = result })
+        .catch(() => { lspHover.value = null })
+        .finally(() => { lspHoverLoading.value = false }),
+    )
+  }
+
+  await Promise.allSettled(tasks)
 }
 
 // ── Rendering helpers ─────────────────────────────────────────────────
