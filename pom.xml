@@ -17,7 +17,7 @@
     </description>
 
     <properties>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Quarkus -->
@@ -305,7 +305,7 @@
                         <phase>compile</phase>
                         <goals><goal>compile</goal></goals>
                         <configuration>
-                            <release>21</release>
+                            <release>25</release>
                             <excludes>
                                 <exclude>com/hlag/sourceviewer/processor/**</exclude>
                             </excludes>

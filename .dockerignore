@@ -1,0 +1,26 @@
+# Version control
+.git
+.github
+
+# IDE / editor artefacts
+.idea
+.settings
+.classpath
+.project
+.factorypath
+
+# Build output (rebuilt inside Docker)
+target/
+frontend/node/
+frontend/node_modules/
+
+# Development / documentation
+docs/
+keycloak/
+pgadmin/
+docker-compose.yml
+*.md
+
+# Misc
+.claude
+renovate.json

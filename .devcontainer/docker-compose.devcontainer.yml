@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Dev Container Compose file
+#
+# Starts three services:
+#   • devcontainer  — development environment (JDK 25, Maven, Node.js, LSP)
+#   • postgres      — PostgreSQL 16 (application database)
+#   • keycloak      — Keycloak 26.2 (OIDC identity provider)
+#
+# All services share the same bridge network.  Quarkus inside the devcontainer
+# reaches Postgres and Keycloak using their service names as hostnames.
+# ─────────────────────────────────────────────────────────────────────────────
+services:
+
+  # ── Development container ─────────────────────────────────────────────────
+  devcontainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Project sources as a bind-mount into the container filesystem.
+      # :z sets the SELinux label correctly — required for Podman on RHEL/Fedora.
+      - ..:/workspace:z
+      # Separate volume for the Maven local repository cache so that all
+      # dependencies do not have to be re-downloaded on every container restart.
+      - maven-cache:/root/.m2
+      # Persist the JDTLS workspace (indexes, project data).
+      - jdtls-workspace:/var/jdtls-workspace
+    # The container runs as a daemon — IntelliJ connects via SSH/Gateway.
+    command: sleep infinity
+    environment:
+      # ── Database (Quarkus env vars override application.properties)
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/sourceviewer
+      QUARKUS_DATASOURCE_USERNAME: sourceviewer
+      QUARKUS_DATASOURCE_PASSWORD: sourceviewer
+      # ── OIDC (server-to-server: via the internal service name)
+      QUARKUS_OIDC_AUTH_SERVER_URL: http://keycloak:8080/realms/sourceviewer
+      # ── OIDC (browser: via the host-exposed port)
+      FRONTEND_OIDC_AUTHORITY: http://localhost:9090/realms/sourceviewer
+    # Forward the debug port 5005 and the app port 8080 to the host.
+    ports:
+      - "8080:8080"
+      - "5005:5005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sourceviewer-postgres
+    environment:
+      POSTGRES_USER: sourceviewer
+      POSTGRES_PASSWORD: sourceviewer
+      POSTGRES_DB: sourceviewer
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sourceviewer -d sourceviewer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Keycloak ─────────────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2
+    container_name: sourceviewer-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "9090:8080"
+    volumes:
+      - ../keycloak/sourceviewer-realm.json:/opt/keycloak/data/import/sourceviewer-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  maven-cache:
+  jdtls-workspace:
+

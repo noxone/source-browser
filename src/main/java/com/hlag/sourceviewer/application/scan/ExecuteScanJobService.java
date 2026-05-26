@@ -412,10 +412,12 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 if (fileOpt.isEmpty()) {
                     continue;
                 }
-                logger.debug("Indexing symbols of {}: {}", matchingContext.get().indexer().supportedLanguage(), path.value());
                 var fileId = fileOpt.get().identifier();
                 Long scanJobId = job.identifier().value();
-                var parsed = matchingContext.get().index(fileId, path, contentOpt.get());
+                var indexerContext = matchingContext.get();
+                var indexer = matchingContext.get().indexer();
+                logger.debug("Indexing symbols of {} ({}): {}", indexer.supportedLanguage(), indexer.getClass().getSimpleName(), path.value());
+                var parsed = indexerContext.index(fileId, path, contentOpt.get());
                 storeSymbols(parsed, fileId, scanJobId);
                 storeTokenStream(parsed, fileId, scanJobId);
                 storeHoverData(parsed, fileId, scanJobId);

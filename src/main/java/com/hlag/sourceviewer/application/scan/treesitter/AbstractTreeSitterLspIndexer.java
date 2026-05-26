@@ -43,10 +43,36 @@ import java.util.Optional;
  * </ol>
  *
  * <p>Concrete subclasses must be {@code @ApplicationScoped} CDI beans.</p>
+ *
+ * <p>On platforms where the TreeSitter native library is not bundled (e.g. Windows),
+ * {@link #analyze} returns {@code false} so that the registry skips these indexers
+ * and falls back to any lower-priority alternative.</p>
  */
 public abstract class AbstractTreeSitterLspIndexer implements LanguageIndexer {
 
     private static final Logger logger = LoggerFactory.getLogger(AbstractTreeSitterLspIndexer.class);
+
+    /**
+     * {@code true} when the TreeSitter JNI native library loaded successfully.
+     * The library is only bundled for Linux and macOS; on Windows this will be {@code false}.
+     */
+    static final boolean NATIVE_AVAILABLE = checkNativeAvailable();
+
+    private static boolean checkNativeAvailable() {
+        try {
+            // Accessing any Language constant triggers the JNI native library static initialiser.
+            // On platforms without a bundled native library this throws UnsatisfiedLinkError
+            // (wrapped in ExceptionInInitializerError on subsequent accesses).
+            @SuppressWarnings("unused")
+            Language probe = Language.JAVA;
+            return true;
+        } catch (UnsatisfiedLinkError | ExceptionInInitializerError | NoClassDefFoundError e) {
+            LoggerFactory.getLogger(AbstractTreeSitterLspIndexer.class)
+                    .warn("TreeSitter native library unavailable on '{}'; tree-sitter indexers disabled. ({})",
+                            System.getProperty("os.name"), e.getMessage());
+            return false;
+        }
+    }
 
     protected final LspServerManager lspServerManager;
 
@@ -65,7 +91,7 @@ public abstract class AbstractTreeSitterLspIndexer implements LanguageIndexer {
 
     @Override
     public boolean analyze(Path repoRoot, List<FilePath> allFiles) {
-        return true;
+        return NATIVE_AVAILABLE;
     }
 
     /**

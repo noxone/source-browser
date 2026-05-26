@@ -31,8 +31,9 @@ class JavaTreeSitterLspIndexerUnitTest {
     }
 
     @Test
-    void analyze_always_returns_true() {
-        assertThat(indexer.analyze(Path.of("/any"), List.of())).isTrue();
+    void analyze_returns_native_availability() {
+        assertThat(indexer.analyze(Path.of("/any"), List.of()))
+                .isEqualTo(AbstractTreeSitterLspIndexer.NATIVE_AVAILABLE);
     }
 
     @Test

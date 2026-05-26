@@ -1392,6 +1392,10 @@ function handleRepoSaved(saved: Repository) {
     repositories.value[index] = saved
   } else {
     repositories.value.push(saved)
+    repoCredentials.value[saved.id] = null
+    getRepositoryCredential(saved.id)
+      .then(credential => { repoCredentials.value[saved.id] = credential })
+      .catch(() => { repoCredentials.value[saved.id] = null })
   }
   closeRepoFormModal()
 }
