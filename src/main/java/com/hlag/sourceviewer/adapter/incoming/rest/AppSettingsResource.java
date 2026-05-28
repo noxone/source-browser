@@ -30,19 +30,43 @@ public class AppSettingsResource {
     private static final String MASKED = "****";
 
     /** Descriptions for all known settings, shown in the UI. */
-    private static final Map<String, String> DESCRIPTIONS = Map.of(
-            ManageAppSettingsUseCase.SETTING_SCAN_MAX_PARALLEL_JOBS,
-            "Maximum number of scan jobs executed concurrently per application instance",
-            ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
-            "Number of files processed per batch during a scan (each batch runs in its own transaction)",
-            ManageAppSettingsUseCase.SETTING_SCAN_CHUNK_SIZE,
-            "Maximum number of characters per document chunk when indexing large files (avoids the PostgreSQL 1 MB tsvector limit)",
-            ManageAppSettingsUseCase.SETTING_MAVEN_REPO_URL,
-            "URL of the Maven repository used for dependency resolution (defaults to Maven Central)",
-            ManageAppSettingsUseCase.SETTING_MAVEN_REPO_USERNAME,
-            "Username for authenticating against the configured Maven repository (leave empty for no authentication)",
-            ManageAppSettingsUseCase.SETTING_MAVEN_REPO_PASSWORD,
-            "Password / secret for authenticating against the configured Maven repository"
+    private static final Map<String, String> DESCRIPTIONS = Map.ofEntries(
+            Map.entry(ManageAppSettingsUseCase.SETTING_SCAN_MAX_PARALLEL_JOBS,
+                    "Maximum number of scan jobs executed concurrently per application instance"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
+                    "Number of files processed per batch during a scan (each batch runs in its own transaction)"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_SCAN_CHUNK_SIZE,
+                    "Maximum number of characters per document chunk when indexing large files (avoids the PostgreSQL 1 MB tsvector limit)"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_MAVEN_REPO_URL,
+                    "URL of the Maven repository used for dependency resolution (defaults to Maven Central)"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_MAVEN_REPO_USERNAME,
+                    "Username for authenticating against the configured Maven repository (leave empty for no authentication)"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_MAVEN_REPO_PASSWORD,
+                    "Password / secret for authenticating against the configured Maven repository"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_WORKSPACE_BASE_PATH,
+                    "Base directory for persistent language-server workspaces (leave empty to use the user-home default)"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_DEFAULT_READY_TIMEOUT_MS,
+                    "Default timeout in milliseconds while waiting for a language server to become ready"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_COMMAND,
+                    "Java command used to launch JDTLS (java executable or absolute path)"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_LAUNCHER_JAR,
+                    "Absolute path to the JDTLS org.eclipse.equinox.launcher_*.jar file"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_OVERRIDE_OS,
+                    "Optional explicit OS override for JDTLS platform resolution (windows/linux/macos)"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_OVERRIDE_ARCH,
+                    "Optional explicit architecture override for JDTLS platform resolution (x64/arm64)"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_WINDOWS_X64,
+                    "Absolute path of the JDTLS config directory for Windows x64"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_WINDOWS_ARM64,
+                    "Absolute path of the JDTLS config directory for Windows arm64"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_LINUX_X64,
+                    "Absolute path of the JDTLS config directory for Linux x64"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_LINUX_ARM64,
+                    "Absolute path of the JDTLS config directory for Linux arm64"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_MACOS_X64,
+                    "Absolute path of the JDTLS config directory for macOS x64"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_MACOS_ARM64,
+                    "Absolute path of the JDTLS config directory for macOS arm64")
     );
 
     /** Known settings with their default values, in display order. */
@@ -64,7 +88,43 @@ public class AppSettingsResource {
                     ManageAppSettingsUseCase.DEFAULT_MAVEN_REPO_USERNAME, false),
             new KnownSetting(
                     ManageAppSettingsUseCase.SETTING_MAVEN_REPO_PASSWORD,
-                    ManageAppSettingsUseCase.DEFAULT_MAVEN_REPO_PASSWORD, true)
+                    ManageAppSettingsUseCase.DEFAULT_MAVEN_REPO_PASSWORD, true),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_WORKSPACE_BASE_PATH,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_WORKSPACE_BASE_PATH, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_DEFAULT_READY_TIMEOUT_MS,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_DEFAULT_READY_TIMEOUT_MS, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_COMMAND,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_COMMAND, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_LAUNCHER_JAR,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_LAUNCHER_JAR, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_OVERRIDE_OS,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_OVERRIDE_OS, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_OVERRIDE_ARCH,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_OVERRIDE_ARCH, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_WINDOWS_X64,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_WINDOWS_X64, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_WINDOWS_ARM64,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_WINDOWS_ARM64, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_LINUX_X64,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_LINUX_X64, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_LINUX_ARM64,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_LINUX_ARM64, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_MACOS_X64,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_MACOS_X64, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_MACOS_ARM64,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_MACOS_ARM64, false)
     );
 
     private record KnownSetting(String key, String defaultValue, boolean secret) {}

@@ -10,6 +10,7 @@ import com.hlag.sourceviewer.domain.model.source.CommitInfo;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.GitCredentialStore;
 import com.hlag.sourceviewer.domain.port.outgoing.SecretEncryptor;
+import com.hlag.sourceviewer.domain.service.RepositoryStorageDirectoryNameResolver;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.jgit.api.Git;
@@ -34,7 +35,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -281,24 +281,7 @@ public class JGitAccess implements GitAccess {
     }
 
     private String localDirName(Repository repository) {
-        String id = "repo-" + repository.identifier().value();
-        return repository.remoteUrl()
-                .map(url -> id + "-" + sanitizedRemotePath(url.value()))
-                .orElse(id);
-    }
-
-    private String sanitizedRemotePath(String remoteUrl) {
-        try {
-            String path = URI.create(remoteUrl).getPath();
-            if (path.endsWith(".git")) {
-                path = path.substring(0, path.length() - 4);
-            }
-            // Replace every non-alphanumeric character with '-', collapse runs, trim edges
-            return path.replaceAll("[^A-Za-z0-9]+", "-").replaceAll("^-|-$", "");
-        } catch (Exception exception) {
-            // Fall back to a safe hash-free name if the URL is not parseable as a URI
-            return remoteUrl.replaceAll("[^A-Za-z0-9]+", "-").replaceAll("^-|-$", "");
-        }
+        return RepositoryStorageDirectoryNameResolver.localDirectoryName(repository);
     }
 
     private Optional<UsernamePasswordCredentialsProvider> credentialsForRepository(Repository repository) {
