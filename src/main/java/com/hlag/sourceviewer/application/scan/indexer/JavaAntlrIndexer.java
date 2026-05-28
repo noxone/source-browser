@@ -1,6 +1,10 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
+import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.application.scan.antlr.JavaLexer;
+import com.hlag.sourceviewer.application.scan.lsp.LanguageServerSession;
+import com.hlag.sourceviewer.application.scan.lsp.LspManager;
+import com.hlag.sourceviewer.application.scan.lsp.LspProjectContext;
 import com.hlag.sourceviewer.domain.model.identifier.ColumnNumber;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
@@ -8,16 +12,32 @@ import com.hlag.sourceviewer.domain.model.identifier.LineNumber;
 import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
 import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
+import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
 import com.hlag.sourceviewer.domain.model.source.Symbol;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.Token;
+import org.eclipse.lsp4j.DidCloseTextDocumentParams;
+import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.HoverParams;
+import org.eclipse.lsp4j.MarkupContent;
+import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.TextDocumentIdentifier;
+import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.*;
 
@@ -26,9 +46,15 @@ import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind
  *
  * <p>Priority is intentionally between Maven-aware Java indexing and the generic
  * JavaParser fallback.</p>
+ *
+ * <p>When JDTLS is configured, a language-server session is started during {@link #prepare}
+ * and used in {@link #indexFile} to query per-token hover details from the language server.
+ * The results are written to the log for diagnostic purposes.</p>
  */
 @ApplicationScoped
 public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
+
+    private static final Logger logger = LoggerFactory.getLogger(JavaAntlrIndexer.class);
 
     private static final int CLASS_BODY_UNKNOWN = -1;
 
@@ -36,6 +62,18 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     private static final Set<String> MEMBER_MODIFIERS = Set.of(
             "public", "private", "protected", "static", "final", "abstract", "native", "synchronized",
             "strictfp", "default", "transient", "volatile");
+
+    private final LspManager lspManager;
+
+    @Inject
+    public JavaAntlrIndexer(LspManager lspManager) {
+        this.lspManager = lspManager;
+    }
+
+    /** No-arg constructor for CDI proxy and unit-test construction without LSP. */
+    JavaAntlrIndexer() {
+        this.lspManager = null;
+    }
 
     @Override
     public String supportedLanguage() {
@@ -56,6 +94,135 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     protected Lexer createLexer(CharStream input) {
         return new JavaLexer(input);
     }
+
+    /**
+     * Starts a JDTLS session for the repository if the language server is available and
+     * configured. Returns a {@link JavaAntlrIndexingContext} holding the session (if started)
+     * and the repository root path.
+     */
+    @Override
+    public JavaAntlrIndexingContext prepare(Path repoRoot, Repository repository) {
+        Optional<LanguageServerSession> session = tryStartLspSession(repoRoot, repository);
+        return new JavaAntlrIndexingContext(repoRoot, session);
+    }
+
+    private Optional<LanguageServerSession> tryStartLspSession(Path repoRoot, Repository repository) {
+        if (lspManager == null) {
+            return Optional.empty();
+        }
+        try {
+            LanguageServerSession session = lspManager.getLspForLanguage(
+                    "java", new LspProjectContext(repository, repoRoot));
+            logger.info("JDTLS session started for repository '{}'", repository.name().value());
+            return Optional.of(session);
+        } catch (Exception e) {
+            logger.warn("Could not start JDTLS for repository '{}'.", repository.name().value(), e);
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Indexes the file via ANTLR tokenisation and, when a JDTLS session is available,
+     * additionally queries the language server for hover details on every token and
+     * writes the results to the log.
+     */
+    @Override
+    public ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context) {
+        ParsedFile parsedFile = super.indexFile(fileId, path, content, context);
+
+        if (context instanceof JavaAntlrIndexingContext ctx && ctx.session().isPresent()) {
+            queryAndLogLspDetails(ctx.repoRoot(), path, content, parsedFile, ctx.session().get());
+        }
+
+        return parsedFile;
+    }
+
+    /** Closes the JDTLS session held by the context (if any). */
+    @Override
+    public void teardown(Object context) {
+        if (context instanceof JavaAntlrIndexingContext ctx) {
+            ctx.close();
+            logger.debug("JDTLS session closed after indexing");
+        }
+    }
+
+    // -- LSP hover queries -----------------------------------------------------
+
+    private void queryAndLogLspDetails(Path repoRoot, FilePath path, String content, ParsedFile parsedFile,
+                                       LanguageServerSession session) {
+        String fileUri = resolveFileUri(repoRoot, path);
+        openDocument(session, fileUri, content);
+        try {
+            queryTokenHovers(session, fileUri, parsedFile);
+        } finally {
+            closeDocument(session, fileUri);
+        }
+    }
+
+    private static String resolveFileUri(Path repoRoot, FilePath path) {
+        // FilePath uses forward slashes; resolve via Path API for OS compatibility
+        return repoRoot.resolve(Path.of(path.value())).toUri().toString();
+    }
+
+    private static void openDocument(LanguageServerSession session, String fileUri, String content) {
+        TextDocumentItem item = new TextDocumentItem(fileUri, "java", 1, content);
+        session.textDocumentService().didOpen(new DidOpenTextDocumentParams(item));
+    }
+
+    private void queryTokenHovers(LanguageServerSession session, String fileUri, ParsedFile parsedFile) {
+        for (ExtractedToken token : parsedFile.tokens()) {
+            // LSP positions are 0-based; ANTLR lines are 1-based, columns are 0-based
+            Position position = new Position(token.line() - 1, token.columnStart() - 1);
+            HoverParams params = new HoverParams(new TextDocumentIdentifier(fileUri), position);
+
+            try {
+                Hover hover = session.textDocumentService().hover(params).get(5, TimeUnit.SECONDS);
+                if (hover != null && hover.getContents() != null) {
+                    String hoverText = formatHoverContents(hover);
+                    if (!hoverText.isBlank()) {
+                        logger.debug("[JDTLS] '{}' at {}:{} - {}",
+                                token.text(),
+                                token.line(),
+                                token.columnStart(),
+                                hoverText);
+                    }
+                }
+            } catch (Exception e) {
+                logger.trace("[JDTLS] hover failed for token '{}' at {}:{}: {}",
+                        token.text(), token.line(), token.columnStart(),
+                        e.getMessage());
+            }
+        }
+    }
+
+    private static void closeDocument(LanguageServerSession session, String fileUri) {
+        session.textDocumentService().didClose(
+                new DidCloseTextDocumentParams(new TextDocumentIdentifier(fileUri)));
+    }
+
+    private static String formatHoverContents(Hover hover) {
+        Either<List<Either<String, org.eclipse.lsp4j.MarkedString>>, MarkupContent> contents =
+                hover.getContents();
+        if (contents.isRight()) {
+            MarkupContent markup = contents.getRight();
+            return markup != null && markup.getValue() != null ? markup.getValue().strip() : "";
+        }
+        if (contents.isLeft() && contents.getLeft() != null) {
+            List<String> parts = new ArrayList<>();
+            for (Either<String, org.eclipse.lsp4j.MarkedString> item : contents.getLeft()) {
+                if (item.isLeft() && item.getLeft() != null) {
+                    parts.add(item.getLeft());
+                } else if (item.isRight() && item.getRight() != null
+                        && item.getRight().getValue() != null) {
+                    parts.add(item.getRight().getValue());
+                }
+            }
+            return String.join(" | ", parts).strip();
+        }
+        return "";
+    }
+
+    // -- ANTLR tokenization ----------------------------------------------------
 
     @Override
     protected TokenKind mapTokenKind(int tokenType) {

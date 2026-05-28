@@ -4,6 +4,7 @@ import com.hlag.sourceviewer.application.scan.JavaFileParser;
 import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.nio.file.Path;
@@ -36,7 +37,7 @@ public class GenericJavaIndexer implements LanguageIndexer {
     }
 
     @Override
-    public JavaIndexingContext prepare(Path repoRoot) {
+    public JavaIndexingContext prepare(Path repoRoot, Repository repository) {
         return new JavaIndexingContext(javaFileParser.buildTypeSolver(repoRoot));
     }
 

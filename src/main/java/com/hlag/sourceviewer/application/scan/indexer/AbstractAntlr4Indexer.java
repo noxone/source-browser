@@ -4,6 +4,7 @@ import com.hlag.sourceviewer.application.scan.JavaFileParser;
 import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.Symbol;
 import org.antlr.v4.runtime.CharStream;
@@ -39,7 +40,7 @@ public abstract class AbstractAntlr4Indexer implements LanguageIndexer {
     }
 
     @Override
-    public Object prepare(Path repoRoot) {
+    public Object prepare(Path repoRoot, Repository repository) {
         return null;
     }
 

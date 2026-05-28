@@ -39,7 +39,7 @@ class CssIndexerUnitTest {
 
     @Test
     void prepare_returns_null() {
-        assertThat(indexer.prepare(Path.of("/any"))).isNull();
+        assertThat(indexer.prepare(Path.of("/any"), null)).isNull();
     }
 
     @Test

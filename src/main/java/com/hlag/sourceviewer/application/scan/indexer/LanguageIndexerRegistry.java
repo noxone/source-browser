@@ -1,6 +1,7 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
@@ -36,7 +37,7 @@ public class LanguageIndexerRegistry {
      * Selects one indexer per language, calls {@link LanguageIndexer#prepare} on each
      * selected indexer, and returns the resulting contexts keyed by language token.
      */
-    public Map<String, SelectedIndexerContext> selectAndPrepare(Path repoRoot, List<FilePath> allFiles) {
+    public Map<String, SelectedIndexerContext> selectAndPrepare(Path repoRoot, List<FilePath> allFiles, Repository repository) {
         Map<String, List<LanguageIndexer>> byLanguage = StreamSupport
                 .stream(indexers.spliterator(), false)
                 .collect(groupingBy(LanguageIndexer::supportedLanguage));
@@ -48,7 +49,7 @@ public class LanguageIndexerRegistry {
                         .filter(idx -> idx.analyze(repoRoot, allFiles))
                         .findFirst()
                         .ifPresent(idx -> {
-                            Object ctx = idx.prepare(repoRoot);
+                            Object ctx = idx.prepare(repoRoot, repository);
                             result.put(lang, new SelectedIndexerContext(idx, ctx));
                         }));
         return Collections.unmodifiableMap(result);

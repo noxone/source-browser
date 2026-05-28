@@ -267,11 +267,15 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         // ── Phase 2: language-specific symbol indexing ────────────────────────
         Path repoLocalPath = gitAccess.getLocalPath(repository);
         Map<String, SelectedIndexerContext> indexerContexts =
-                languageIndexerRegistry.selectAndPrepare(repoLocalPath, toIndex);
+                languageIndexerRegistry.selectAndPrepare(repoLocalPath, toIndex, repository);
 
-        if (!indexerContexts.isEmpty()) {
-            runBatchLoop(toIndex, repository.name().value(), "symbol",
-                    batch -> indexSymbolBatch(batch, job, repository, targetSha, indexerContexts));
+        try {
+            if (!indexerContexts.isEmpty()) {
+                runBatchLoop(toIndex, repository.name().value(), "symbol",
+                        batch -> indexSymbolBatch(batch, job, repository, targetSha, indexerContexts));
+            }
+        } finally {
+            indexerContexts.forEach((lang, ctx) -> ctx.indexer().teardown(ctx.context()));
         }
 
         runInNewTransaction(() ->
