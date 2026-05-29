@@ -8,6 +8,6 @@ import java.time.Duration;
 public interface LspReadinessStrategy {
 
     /** Waits for readiness or throws if the timeout is reached. */
-    void waitUntilReady(LanguageServerSession session, LspProjectContext context, Duration timeout);
+    void waitUntilReady(LanguageServerSession<?> session, LspProjectContext context, Duration timeout);
 }
 

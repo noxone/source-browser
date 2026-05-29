@@ -1,5 +1,7 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.application.scan.antlr.JavaLexer;
 import com.hlag.sourceviewer.application.scan.lsp.LanguageServerSession;
@@ -16,26 +18,32 @@ import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
 import com.hlag.sourceviewer.domain.model.source.Symbol;
+import com.hlag.sourceviewer.infrastructure.lsp.jdtls.JdtlsNotifyingLanguageClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.lang.reflect.Method;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.Token;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.DocumentSymbolParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.TextDocumentItem;
-import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +65,9 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     private static final Logger logger = LoggerFactory.getLogger(JavaAntlrIndexer.class);
 
     private static final int CLASS_BODY_UNKNOWN = -1;
+    private static final int HOVER_REQUEST_TIMEOUT_SECONDS = 5;
+    private static final int DOCUMENT_SYNC_WAIT_MILLIS = 250;
+    private static final int HOVER_RAW_SAMPLE_LIMIT = 3;
 
     private static final Set<String> TYPE_KEYWORDS = Set.of("class", "interface", "enum", "record");
     private static final Set<String> MEMBER_MODIFIERS = Set.of(
@@ -102,16 +113,63 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
      */
     @Override
     public JavaAntlrIndexingContext prepare(Path repoRoot, Repository repository) {
-        Optional<LanguageServerSession> session = tryStartLspSession(repoRoot, repository);
+        Path lspProjectRoot = resolveLspProjectRoot(repoRoot);
+        if (!lspProjectRoot.equals(repoRoot)) {
+            logger.info("Using nested Java project root for JDTLS: '{}' (scan root remains '{}')",
+                    lspProjectRoot, repoRoot);
+        }
+        Optional<LanguageServerSession<JdtlsNotifyingLanguageClient>> session = tryStartLspSession(lspProjectRoot, repository);
         return new JavaAntlrIndexingContext(repoRoot, session);
     }
 
-    private Optional<LanguageServerSession> tryStartLspSession(Path repoRoot, Repository repository) {
+    private static Path resolveLspProjectRoot(Path repoRoot) {
+        if (hasBuildDescriptor(repoRoot)) {
+            return repoRoot;
+        }
+
+        try (Stream<Path> stream = Files.walk(repoRoot, 3)) {
+            List<Path> candidateRoots = stream
+                    .filter(Files::isRegularFile)
+                    .filter(JavaAntlrIndexer::isBuildDescriptor)
+                    .map(Path::getParent)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .sorted(Comparator.comparingInt(Path::getNameCount))
+                    .toList();
+
+            if (candidateRoots.size() == 1) {
+                return candidateRoots.getFirst();
+            }
+        } catch (Exception ignored) {
+            // Fall through to repo root when descriptor discovery fails.
+        }
+
+        return repoRoot;
+    }
+
+    private static boolean hasBuildDescriptor(Path dir) {
+        return Files.isRegularFile(dir.resolve("pom.xml"))
+                || Files.isRegularFile(dir.resolve("build.gradle"))
+                || Files.isRegularFile(dir.resolve("build.gradle.kts"))
+                || Files.isRegularFile(dir.resolve("settings.gradle"))
+                || Files.isRegularFile(dir.resolve("settings.gradle.kts"));
+    }
+
+    private static boolean isBuildDescriptor(Path file) {
+        String name = file.getFileName().toString();
+        return "pom.xml".equals(name)
+                || "build.gradle".equals(name)
+                || "build.gradle.kts".equals(name)
+                || "settings.gradle".equals(name)
+                || "settings.gradle.kts".equals(name);
+    }
+
+    private Optional<LanguageServerSession<JdtlsNotifyingLanguageClient>> tryStartLspSession(Path repoRoot, Repository repository) {
         if (lspManager == null) {
             return Optional.empty();
         }
         try {
-            LanguageServerSession session = lspManager.getLspForLanguage(
+            LanguageServerSession<JdtlsNotifyingLanguageClient> session = lspManager.getLspForLanguage(
                     "java", new LspProjectContext(repository, repoRoot));
             logger.info("JDTLS session started for repository '{}'", repository.name().value());
             return Optional.of(session);
@@ -130,8 +188,10 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     public ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context) {
         ParsedFile parsedFile = super.indexFile(fileId, path, content, context);
 
-        if (context instanceof JavaAntlrIndexingContext ctx && ctx.session().isPresent()) {
-            queryAndLogLspDetails(ctx.repoRoot(), path, content, parsedFile, ctx.session().get());
+        if (context instanceof JavaAntlrIndexingContext(
+            Path repoRoot, Optional<LanguageServerSession<JdtlsNotifyingLanguageClient>> session
+        ) && session.isPresent()) {
+            queryAndLogLspDetails(path, content, parsedFile, session.get());
         }
 
         return parsedFile;
@@ -148,9 +208,9 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
     // -- LSP hover queries -----------------------------------------------------
 
-    private void queryAndLogLspDetails(Path repoRoot, FilePath path, String content, ParsedFile parsedFile,
-                                       LanguageServerSession session) {
-        String fileUri = resolveFileUri(repoRoot, path);
+    private void queryAndLogLspDetails(FilePath path, String content, ParsedFile parsedFile,
+                                       LanguageServerSession<JdtlsNotifyingLanguageClient> session) {
+        final var fileUri = resolveFileUri(session.projectRoot(), path);
         openDocument(session, fileUri, content);
         try {
             queryTokenHovers(session, fileUri, parsedFile);
@@ -161,37 +221,87 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
     private static String resolveFileUri(Path repoRoot, FilePath path) {
         // FilePath uses forward slashes; resolve via Path API for OS compatibility
-        return repoRoot.resolve(Path.of(path.value())).toUri().toString();
+        return repoRoot.resolve(Path.of(path.value())).toAbsolutePath().toUri().toString();
     }
 
-    private static void openDocument(LanguageServerSession session, String fileUri, String content) {
+    private static void openDocument(LanguageServerSession<JdtlsNotifyingLanguageClient> session, String fileUri, String content) {
         TextDocumentItem item = new TextDocumentItem(fileUri, "java", 1, content);
         session.textDocumentService().didOpen(new DidOpenTextDocumentParams(item));
+        pauseForDocumentSync();
     }
 
-    private void queryTokenHovers(LanguageServerSession session, String fileUri, ParsedFile parsedFile) {
+    private void queryTokenHovers(LanguageServerSession<JdtlsNotifyingLanguageClient> session, String fileUri, ParsedFile parsedFile) {
+        final var identifier = new TextDocumentIdentifier(fileUri);
+        try {
+            var symbols = session.textDocumentService().documentSymbol(new DocumentSymbolParams(identifier)).get(5, SECONDS);
+            System.out.println(symbols);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        int queried = 0;
+        int withContent = 0;
+        int empty = 0;
+        int nullHover = 0;
+        int failed = 0;
+        int sampledEmptyPayloads = 0;
+
         for (ExtractedToken token : parsedFile.tokens()) {
+            if (token.kind() != IDENTIFIER) {
+                continue;
+            }
+
+            queried++;
             // LSP positions are 0-based; ANTLR lines are 1-based, columns are 0-based
-            Position position = new Position(token.line() - 1, token.columnStart() - 1);
+            Position position = new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
             HoverParams params = new HoverParams(new TextDocumentIdentifier(fileUri), position);
 
             try {
-                Hover hover = session.textDocumentService().hover(params).get(5, TimeUnit.SECONDS);
+                Hover hover = session.textDocumentService().hover(params)
+                        .get(HOVER_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 if (hover != null && hover.getContents() != null) {
                     String hoverText = formatHoverContents(hover);
                     if (!hoverText.isBlank()) {
+                        withContent++;
                         logger.debug("[JDTLS] '{}' at {}:{} - {}",
                                 token.text(),
                                 token.line(),
                                 token.columnStart(),
                                 hoverText);
+                    } else {
+                        empty++;
+                        if (sampledEmptyPayloads < HOVER_RAW_SAMPLE_LIMIT) {
+                            Object rawContents = hover.getContents();
+                            logger.debug("[JDTLS] empty hover payload sample {} for {}:{} token='{}' type={} value={}",
+                                    sampledEmptyPayloads + 1,
+                                    token.line(),
+                                    token.columnStart(),
+                                    token.text(),
+                                    rawContents == null ? "null" : rawContents.getClass().getName(),
+                                    String.valueOf(rawContents));
+                            sampledEmptyPayloads++;
+                        }
                     }
+                } else {
+                    nullHover++;
                 }
             } catch (Exception e) {
+                failed++;
                 logger.trace("[JDTLS] hover failed for token '{}' at {}:{}: {}",
                         token.text(), token.line(), token.columnStart(),
                         e.getMessage());
             }
+        }
+
+        logger.debug("[JDTLS] hover summary for {}: queried identifiers={}, withContent={}, empty={}, null={}, failed={}",
+                fileUri, queried, withContent, empty, nullHover, failed);
+    }
+
+    private static void pauseForDocumentSync() {
+        try {
+            Thread.sleep(DOCUMENT_SYNC_WAIT_MILLIS);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -201,25 +311,89 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     }
 
     private static String formatHoverContents(Hover hover) {
-        Either<List<Either<String, org.eclipse.lsp4j.MarkedString>>, MarkupContent> contents =
-                hover.getContents();
-        if (contents.isRight()) {
-            MarkupContent markup = contents.getRight();
-            return markup != null && markup.getValue() != null ? markup.getValue().strip() : "";
+        List<String> parts = new ArrayList<>();
+        collectHoverParts(hover.getContents(), parts);
+        return String.join(" | ", parts).strip();
+    }
+
+    private static void collectHoverParts(Object value, List<String> parts) {
+        if (value == null) {
+            return;
         }
-        if (contents.isLeft() && contents.getLeft() != null) {
-            List<String> parts = new ArrayList<>();
-            for (Either<String, org.eclipse.lsp4j.MarkedString> item : contents.getLeft()) {
-                if (item.isLeft() && item.getLeft() != null) {
-                    parts.add(item.getLeft());
-                } else if (item.isRight() && item.getRight() != null
-                        && item.getRight().getValue() != null) {
-                    parts.add(item.getRight().getValue());
-                }
+        if (value instanceof String text) {
+            addPart(parts, text);
+            return;
+        }
+        if (value instanceof MarkupContent markupContent) {
+            addPart(parts, markupContent.getValue());
+            return;
+        }
+        if (value instanceof org.eclipse.lsp4j.MarkedString markedString) {
+            addPart(parts, markedString.getValue());
+            return;
+        }
+        if (value instanceof List<?> list) {
+            for (Object item : list) {
+                collectHoverParts(item, parts);
             }
-            return String.join(" | ", parts).strip();
+            return;
         }
-        return "";
+
+        Object eitherLikeValue = extractEitherLikeValue(value);
+        if (eitherLikeValue != null) {
+            collectHoverParts(eitherLikeValue, parts);
+            return;
+        }
+
+        String reflectedValue = extractValueProperty(value);
+        if (reflectedValue != null) {
+            addPart(parts, reflectedValue);
+        }
+    }
+
+    private static void addPart(List<String> parts, String value) {
+        if (value != null) {
+            String stripped = value.strip();
+            if (!stripped.isEmpty()) {
+                parts.add(stripped);
+            }
+        }
+    }
+
+    private static Object extractEitherLikeValue(Object value) {
+        Object extracted = invokeChosenBranch(value, "isLeft", "getLeft");
+        if (extracted != null) {
+            return extracted;
+        }
+        extracted = invokeChosenBranch(value, "isMiddle", "getMiddle");
+        if (extracted != null) {
+            return extracted;
+        }
+        return invokeChosenBranch(value, "isRight", "getRight");
+    }
+
+    private static Object invokeChosenBranch(Object target, String chooseMethod, String valueMethod) {
+        try {
+            Method chooser = target.getClass().getMethod(chooseMethod);
+            Object chosen = chooser.invoke(target);
+            if (chosen instanceof Boolean bool && bool) {
+                Method accessor = target.getClass().getMethod(valueMethod);
+                return accessor.invoke(target);
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Not an Either-like object for this branch.
+        }
+        return null;
+    }
+
+    private static String extractValueProperty(Object value) {
+        try {
+            Method method = value.getClass().getMethod("getValue");
+            Object result = method.invoke(value);
+            return result == null ? null : result.toString();
+        } catch (ReflectiveOperationException ignored) {
+            return null;
+        }
     }
 
     // -- ANTLR tokenization ----------------------------------------------------

@@ -122,6 +122,16 @@ public interface ManageAppSettingsUseCase {
     /** Default value for {@link #SETTING_LSP_JDTLS_CONFIG_MACOS_ARM64}. */
     String DEFAULT_LSP_JDTLS_CONFIG_MACOS_ARM64 = "";
 
+    /**
+     * Absolute path to a custom Maven local repository that JDTLS should use for dependency caching.
+     *
+     * <p>Leave empty to let Maven use its default local repository ({@code ~/.m2/repository}).</p>
+     */
+    String SETTING_LSP_JDTLS_MAVEN_LOCAL_REPO = "lsp.jdtls.maven.local-repository";
+
+    /** Default value for {@link #SETTING_LSP_JDTLS_MAVEN_LOCAL_REPO} (empty = Maven default). */
+    String DEFAULT_LSP_JDTLS_MAVEN_LOCAL_REPO = "";
+
     // ── Operations ────────────────────────────────────────────────────────────
 
     /**

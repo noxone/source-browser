@@ -24,5 +24,16 @@ public interface JdtlsLanguageClient extends LanguageClient {
      */
     @JsonNotification("language/status")
     void languageStatus(JdtlsStatusReport report);
+
+    /**
+     * Receives auxiliary JDTLS event notifications.
+     *
+     * <p>These events are currently used for diagnostics/observability only.
+     * The payload shape is server-defined and may vary across JDTLS versions.</p>
+     *
+     * @param eventNotification event payload from JDTLS
+     */
+    @JsonNotification("language/eventNotification")
+    void languageEventNotification(Object eventNotification);
 }
 

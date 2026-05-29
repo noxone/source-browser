@@ -66,7 +66,9 @@ public class AppSettingsResource {
             Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_MACOS_X64,
                     "Absolute path of the JDTLS config directory for macOS x64"),
             Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_MACOS_ARM64,
-                    "Absolute path of the JDTLS config directory for macOS arm64")
+                    "Absolute path of the JDTLS config directory for macOS arm64"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_MAVEN_LOCAL_REPO,
+                    "Absolute path to a custom Maven local repository for JDTLS to use (leave empty to use ~/.m2/repository)")
     );
 
     /** Known settings with their default values, in display order. */
@@ -124,7 +126,10 @@ public class AppSettingsResource {
                     ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_MACOS_X64, false),
             new KnownSetting(
                     ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_MACOS_ARM64,
-                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_MACOS_ARM64, false)
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_MACOS_ARM64, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_LSP_JDTLS_MAVEN_LOCAL_REPO,
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_MAVEN_LOCAL_REPO, false)
     );
 
     private record KnownSetting(String key, String defaultValue, boolean secret) {}

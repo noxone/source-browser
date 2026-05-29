@@ -1,16 +1,27 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.hlag.sourceviewer.application.scan.ParsedFile;
+import com.hlag.sourceviewer.application.scan.lsp.LanguageServerSession;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
+import com.hlag.sourceviewer.infrastructure.lsp.jdtls.JdtlsNotifyingLanguageClient;
 import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
 import java.util.List;
+import org.eclipse.lsp4j.services.TextDocumentService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 class JavaAntlrIndexerUnitTest {
 
@@ -124,6 +135,41 @@ class JavaAntlrIndexerUnitTest {
         ParsedFile result = index("class Foo { void bar() { } }");
         assertThat(result.references()).isEmpty();
     }
+
+//    @Test
+//    void open_document_opens_file_before_readiness_probe() {
+//        @SuppressWarnings("unchecked")
+//        LanguageServerSession<JdtlsNotifyingLanguageClient> session = mock(LanguageServerSession.class);
+//        TextDocumentService textDocumentService = mock(TextDocumentService.class);
+//
+//        when(session.textDocumentService()).thenReturn(textDocumentService);
+//        when(textDocumentService.documentSymbol(any())).thenReturn(CompletableFuture.completedFuture(null));
+//
+//        JavaAntlrIndexer.openDocument(session, "file:///repo/src/main/java/Example.java", "class Example {}\n");
+//
+//        InOrder inOrder = inOrder(textDocumentService);
+//        inOrder.verify(textDocumentService).didOpen(any());
+//        inOrder.verify(textDocumentService).documentSymbol(any());
+//    }
+//
+//    @Test
+//    void open_document_retries_readiness_probe_after_failed_attempts() {
+//        @SuppressWarnings("unchecked")
+//        LanguageServerSession<JdtlsNotifyingLanguageClient> session = mock(LanguageServerSession.class);
+//        TextDocumentService textDocumentService = mock(TextDocumentService.class);
+//
+//        when(session.textDocumentService()).thenReturn(textDocumentService);
+//        when(session.textDocumentService()).thenReturn(textDocumentService);
+//        when(textDocumentService.documentSymbol(any()))
+//                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("not ready")))
+//                .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("still not ready")))
+//                .thenReturn(CompletableFuture.completedFuture(null));
+//
+//        JavaAntlrIndexer.openDocument(session, "file:///repo/src/main/java/Retry.java", "class Retry {}\n");
+//
+//        verify(textDocumentService, times(1)).didOpen(any());
+//        verify(textDocumentService, times(3)).documentSymbol(any());
+//    }
 
     private ParsedFile index(String source) {
         return indexer.indexFile(FILE_ID, JAVA_PATH, source, null);

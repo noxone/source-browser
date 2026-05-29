@@ -3,12 +3,13 @@ package com.hlag.sourceviewer.application.scan.lsp;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageServer;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.eclipse.lsp4j.services.WorkspaceService;
 
 /** Represents an active language-server session. */
-public interface LanguageServerSession extends AutoCloseable {
+public interface LanguageServerSession<C extends LanguageClient> extends AutoCloseable {
 
     /** Returns the language token for this session. */
     String language();
@@ -21,6 +22,8 @@ public interface LanguageServerSession extends AutoCloseable {
 
     /** Returns the LSP remote proxy. */
     LanguageServer languageServer();
+
+    C languageClient();
 
     /** Returns the text-document service proxy. */
     TextDocumentService textDocumentService();
