@@ -283,8 +283,150 @@ Restart IntelliJ after changing the profile.
 
 ### `mvn quarkus:dev` cannot find Postgres
 
-- Check that all Compose services are running:
-  ```bash
-  podman ps
-  ```
-- Make sure the `postgres` service has reached the `healthy` status.
+**Symptom** — Quarkus fails on startup with:
+
+```
+Caused by: java.net.UnknownHostException: postgres
+```
+
+**Why this happens** — Quarkus inside the devcontainer uses the hostname `postgres`
+(set via the `QUARKUS_DATASOURCE_JDBC_URL` environment variable in the Compose file).
+Docker/Podman resolves this name through an internal DNS service that is scoped to the
+Compose network.  When the containers land on *different* networks — which can happen
+when VS Code DevContainer, IntelliJ, and a manual `compose up` all use different
+auto-generated project names — the DNS lookup fails.
+
+**Fix** — Stop and restart the entire Compose stack so all containers join the shared
+`sourceviewer-net` network:
+
+```bash
+# Tear down (data volumes are preserved)
+docker compose -f .devcontainer/docker-compose.devcontainer.yml down
+
+# Or with Podman:
+podman compose -f .devcontainer/docker-compose.devcontainer.yml down
+```
+
+Then reopen the Dev Container from VS Code / IntelliJ.
+
+**Verify** — After the containers are up, check that all three services are on the same
+network:
+
+```bash
+docker network inspect sourceviewer-net
+# or
+podman network inspect sourceviewer-net
+```
+
+All three containers (`devcontainer`, `sourceviewer-postgres`, `sourceviewer-keycloak`)
+should appear in the `Containers` section.
+
+**Additional checks:**
+
+- All Compose services must be running: `docker ps` / `podman ps`
+- The `postgres` service must have reached the `healthy` status (check the `STATUS`
+  column — it should show `healthy`, not `starting`).
+
+---
+
+### Browser shows "connection unexpectedly terminated" for `localhost:8080`
+
+**Symptom** — Quarkus starts successfully (Flyway migrations run, no errors in the log),
+but accessing `http://localhost:8080` from the host browser fails with a network error.
+The log shows:
+
+```
+Listening on: http://localhost:8080
+```
+
+**Why this happens** — Quarkus dev mode binds to `localhost` (127.0.0.1) by default,
+not to all interfaces (`0.0.0.0`).  Docker's port mapping (`ports: "8080:8080"` in
+the Compose file) only bridges traffic that arrives at `0.0.0.0:8080` inside the
+container.  Because Quarkus only listens on the container's own loopback, Docker's
+port forwarding can never reach it — the connection is established at the host level
+but immediately reset by the container.
+
+**Fix** — `application.properties` now contains:
+
+```properties
+%dev.quarkus.http.host=0.0.0.0
+```
+
+This setting is already in the repository.  If you are seeing this error, make sure
+you are running the latest version of `application.properties` (pull/rebase from
+`main`) and then restart Quarkus dev mode.
+
+After the fix the log line should read:
+
+```
+Listening on: http://0.0.0.0:8080
+```
+
+and `http://localhost:8080` on the host machine will open the application.
+
+---
+
+### Frontend flickers / constantly redirects to Keycloak; admin area not shown
+
+**Symptom** — After a successful Keycloak login the app loads briefly, then immediately
+redirects to Keycloak again, creating an endless loop.  The admin navigation entry is
+missing even for the first user.
+
+**Root cause — OIDC issuer split-brain** — Quarkus and the browser access Keycloak
+through different URLs:
+
+| Accessor | URL | Resulting `iss` in token / discovery |
+|---|---|---|
+| Browser (frontend) | `http://localhost:9090` | `http://localhost:9090/realms/sourceviewer` |
+| Backend (Quarkus) | `http://keycloak:8080` | `http://keycloak:8080/realms/sourceviewer` |
+
+Keycloak embeds the URL it was reached at as the `issuer` in both the OIDC discovery
+document and in issued JWTs.  Quarkus fetches the discovery via `keycloak:8080` and
+therefore expects `iss=http://keycloak:8080/...`, but every JWT issued to the browser
+has `iss=http://localhost:9090/...`.  This mismatch causes Quarkus to reject every
+authenticated API call with **401 Unauthorized**.
+
+The frontend's HTTP helper (`http.ts`) calls `login()` on every 401, which redirects
+to Keycloak.  Because the user is already authenticated there, Keycloak redirects
+straight back — creating the visible redirect/flicker loop.  The same 401 prevents
+`fetchCurrentUserAccount()` from completing, so `isAdmin` stays `false`.
+
+**Fix** — Two environment variables are set in `.devcontainer/docker-compose.devcontainer.yml`
+(already in the repository):
+
+```yaml
+# devcontainer service
+QUARKUS_OIDC_TOKEN_ISSUER: http://localhost:9090/realms/sourceviewer
+
+# keycloak service
+KC_HOSTNAME: http://localhost:9090
+```
+
+- `QUARKUS_OIDC_TOKEN_ISSUER` overrides Quarkus's expected issuer so it accepts tokens
+  issued at `localhost:9090`.
+- `KC_HOSTNAME` tells Keycloak to embed `http://localhost:9090` as the issuer in its
+  OIDC discovery document, making the two URLs consistent.
+
+If you are still seeing the redirect loop, make sure your Docker Compose stack was
+restarted **completely** (both the devcontainer and the Keycloak service) so the new
+environment variables take effect:
+
+```bash
+docker compose -f .devcontainer/docker-compose.devcontainer.yml down
+# then reopen the Dev Container from IntelliJ / VS Code
+```
+
+**Admin area still missing after the fix?**  The first user to log in is automatically
+provisioned as administrator.  If the `postgres-data` volume contains data from a
+previous session, the first-user slot may already be taken.  Check with:
+
+```sql
+-- run inside the container or via pgAdmin at localhost:9080
+SELECT principal_name, is_admin FROM user_account ORDER BY id;
+```
+
+To promote a user to admin:
+
+```sql
+UPDATE user_account SET is_admin = true WHERE principal_name = 'alice';
+```

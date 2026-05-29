@@ -26,6 +26,9 @@
   // "IU" = IntelliJ IDEA Ultimate; use "IC" for the Community Edition.
   "customizations": {
     "jetbrains": {
+      "settings": {
+        "com.intellij:app:HttpConfigurable.use_proxy_pac": true
+      },
       "backend": "IU"
     }
   },

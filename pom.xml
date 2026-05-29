@@ -293,6 +293,7 @@
                         <phase>generate-sources</phase>
                         <goals><goal>compile</goal></goals>
                         <configuration>
+                            <release>${maven.compiler.release}</release>
                             <proc>none</proc>
                             <outputDirectory>${project.build.directory}/processor-classes</outputDirectory>
                             <includes>
