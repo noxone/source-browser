@@ -17,7 +17,7 @@
     </description>
 
     <properties>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Quarkus -->
@@ -26,13 +26,12 @@
         <quarkus.platform.version>3.35.3</quarkus.platform.version>
 
         <!-- Libraries -->
-        <javaparser.version>3.28.1</javaparser.version>
         <jgit.version>6.10.1.202505221210-r</jgit.version>
         <archunit.version>1.4.2</archunit.version>
         <mapstruct.version>1.6.3</mapstruct.version>
-        <maven.resolver.version>1.9.22</maven.resolver.version>
-        <maven.version>3.9.9</maven.version>
         <antlr4.version>4.13.2</antlr4.version>
+        <treesitter.version>1.12.0</treesitter.version>
+        <lsp4j.version>0.23.1</lsp4j.version>
 
         <!-- Build plugins -->
         <compiler.plugin.version>3.15.0</compiler.plugin.version>
@@ -51,49 +50,6 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- Pin all maven-resolver transitive artifacts to the same version.
-                 Without this, the Quarkus BOM can pull in a mismatched version for
-                 the impl/spi JARs, causing LinkageErrors or missing NameMapper entries. -->
-            <dependency>
-                <groupId>org.apache.maven.resolver</groupId>
-                <artifactId>maven-resolver-api</artifactId>
-                <version>${maven.resolver.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.maven.resolver</groupId>
-                <artifactId>maven-resolver-spi</artifactId>
-                <version>${maven.resolver.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.maven.resolver</groupId>
-                <artifactId>maven-resolver-util</artifactId>
-                <version>${maven.resolver.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.maven.resolver</groupId>
-                <artifactId>maven-resolver-impl</artifactId>
-                <version>${maven.resolver.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.maven.resolver</groupId>
-                <artifactId>maven-resolver-named-locks</artifactId>
-                <version>${maven.resolver.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.maven.resolver</groupId>
-                <artifactId>maven-resolver-connector-basic</artifactId>
-                <version>${maven.resolver.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.maven.resolver</groupId>
-                <artifactId>maven-resolver-transport-file</artifactId>
-                <version>${maven.resolver.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.maven.resolver</groupId>
-                <artifactId>maven-resolver-transport-http</artifactId>
-                <version>${maven.resolver.version}</version>
-            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -152,14 +108,21 @@
             <artifactId>quarkus-hibernate-orm-panache</artifactId>
         </dependency>
 
-        <!-- ── JavaParser ────────────────────────────────────────────── -->
+        <!-- ── TreeSitter (JNI bindings for native grammar libraries) ─── -->
         <dependency>
-            <groupId>com.github.javaparser</groupId>
-            <artifactId>javaparser-symbol-solver-core</artifactId>
-            <version>${javaparser.version}</version>
+            <groupId>ch.usi.si.seart</groupId>
+            <artifactId>java-tree-sitter</artifactId>
+            <version>${treesitter.version}</version>
         </dependency>
 
-        <!-- ── ANTLR4 runtime (for language-specific indexers) ───────── -->
+        <!-- ── Eclipse LSP4J (LSP client implementation) ────────────── -->
+        <dependency>
+            <groupId>org.eclipse.lsp4j</groupId>
+            <artifactId>org.eclipse.lsp4j</artifactId>
+            <version>${lsp4j.version}</version>
+        </dependency>
+
+        <!-- ── ANTLR4 runtime (for CssIndexer) ──────────────────────── -->
         <dependency>
             <groupId>org.antlr</groupId>
             <artifactId>antlr4-runtime</artifactId>
@@ -171,25 +134,6 @@
             <groupId>org.eclipse.jgit</groupId>
             <artifactId>org.eclipse.jgit</artifactId>
             <version>${jgit.version}</version>
-        </dependency>
-
-        <!-- ── Maven Resolver (for MavenAwareJavaIndexer) ───────────── -->
-        <!-- maven-resolver-supplier provides RepositorySystemSupplier and pulls in
-             impl, connector-basic, and transports transitively -->
-        <dependency>
-            <groupId>org.apache.maven.resolver</groupId>
-            <artifactId>maven-resolver-supplier</artifactId>
-            <version>${maven.resolver.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.maven</groupId>
-            <artifactId>maven-resolver-provider</artifactId>
-            <version>${maven.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.maven</groupId>
-            <artifactId>maven-model-builder</artifactId>
-            <version>${maven.version}</version>
         </dependency>
 
         <!-- ── MapStruct ─────────────────────────────────────────────── -->
@@ -349,6 +293,7 @@
                         <phase>generate-sources</phase>
                         <goals><goal>compile</goal></goals>
                         <configuration>
+                            <release>${maven.compiler.release}</release>
                             <proc>none</proc>
                             <outputDirectory>${project.build.directory}/processor-classes</outputDirectory>
                             <includes>
@@ -361,7 +306,7 @@
                         <phase>compile</phase>
                         <goals><goal>compile</goal></goals>
                         <configuration>
-                            <release>21</release>
+                            <release>25</release>
                             <excludes>
                                 <exclude>com/hlag/sourceviewer/processor/**</exclude>
                             </excludes>

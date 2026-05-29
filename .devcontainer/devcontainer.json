@@ -1,0 +1,45 @@
+{
+  // ─── Dev Container — Source Viewer ────────────────────────────────────────
+  // Documentation: docs/dev-container-podman-intellij.md
+  "name": "Source Viewer Dev",
+
+  // Orchestration via Compose: devcontainer + postgres + keycloak start
+  // together in a shared bridge network.
+  "dockerComposeFile": "docker-compose.devcontainer.yml",
+  "service": "devcontainer",
+  "workspaceFolder": "/workspace",
+
+  // ─── Port forwarding ──────────────────────────────────────────────────────
+  // Ports are automatically forwarded from the container to localhost.
+  // The browser on Windows can reach Quarkus (8080) and Keycloak (9090)
+  // without any additional configuration.
+  "forwardPorts": [8080, 5005, 5432, 9090],
+  "portsAttributes": {
+    "8080": { "label": "Quarkus HTTP",  "onAutoForward": "notify" },
+    "5005": { "label": "Quarkus Debug", "onAutoForward": "silent" },
+    "5432": { "label": "PostgreSQL",    "onAutoForward": "silent" },
+    "9090": { "label": "Keycloak",      "onAutoForward": "notify" }
+  },
+
+  // ─── JetBrains customizations ─────────────────────────────────────────────
+  // Tells IntelliJ which backend to install inside the container.
+  // "IU" = IntelliJ IDEA Ultimate; use "IC" for the Community Edition.
+  "customizations": {
+    "jetbrains": {
+      "settings": {
+        "com.intellij:app:HttpConfigurable.use_proxy_pac": true
+      },
+      "backend": "IU"
+    }
+  },
+
+  // ─── Post-create command ───────────────────────────────────────────────────
+  // Runs once after the container is first built.
+  // Pre-fetches Maven dependencies into the cache volume (speeds up the first build).
+  "postCreateCommand": "mvn -B -q -f /workspace/pom.xml dependency:resolve dependency:resolve-plugins || true",
+
+  // ─── Shutdown behavior ─────────────────────────────────────────────────────
+  // When the project window is closed, the Compose stack is stopped (but not
+  // deleted), so volumes (Maven cache, Postgres data) are preserved.
+  "shutdownAction": "stopCompose"
+}

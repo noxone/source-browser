@@ -59,4 +59,16 @@ public interface LanguageIndexer {
      * @return parsed declarations and pending references
      */
     ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context);
+
+    /**
+     * Releases any resources held by the context object after a scan completes.
+     *
+     * <p>The default implementation is a no-op. Implementations that hold expensive
+     * resources (e.g. open file handles) may override this. Note that LSP server
+     * processes are <em>not</em> shut down here — they remain alive for interactive
+     * hover queries after the scan and are managed by the {@code LspServerManager}.</p>
+     *
+     * @param context the context produced by {@link #prepare} for this scan
+     */
+    default void cleanup(Object context) {}
 }

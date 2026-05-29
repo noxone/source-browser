@@ -1,4 +1,4 @@
-import type { FileInfo, Token, SymbolInfo, SymbolReference } from '../types/file'
+import type { FileInfo, Token, SymbolInfo, SymbolReference, LspHoverResult } from '../types/file'
 import { authenticatedFetch } from './http'
 
 async function handleResponse<T>(response: Response): Promise<T> {
@@ -35,4 +35,16 @@ export async function getSymbol(symbolId: number): Promise<SymbolInfo> {
 
 export async function getSymbolReferences(symbolId: number): Promise<SymbolReference[]> {
   return handleResponse(await authenticatedFetch(`/api/symbols/${symbolId}/references`))
+}
+
+export async function getLspHover(
+  fileId: number,
+  line: number,
+  column: number,
+): Promise<LspHoverResult | null> {
+  const url = `/api/lsp/hover?fileId=${fileId}&line=${line}&column=${column}`
+  const response = await authenticatedFetch(url)
+  if (response.status === 404) return null
+  if (!response.ok) return null
+  return response.json()
 }

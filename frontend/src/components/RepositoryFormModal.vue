@@ -48,6 +48,43 @@
           <p class="mt-1 text-xs text-gray-500">Optional — leave blank to auto-detect from remote, defaults to 'main' for local-only repositories.</p>
         </div>
 
+        <!-- Optional credential section (create only) -->
+        <div v-if="!isEditing" class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 space-y-3">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+            </svg>
+            <span class="text-sm font-medium text-gray-700">Git Credential <span class="font-normal text-gray-400">(optional)</span></span>
+          </div>
+          <p class="text-xs text-gray-500">
+            For private repositories, provide a credential so the default branch can be auto-detected and the repository can be cloned. Leave blank for public repositories.
+          </p>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Description</label>
+            <input
+              v-model="form.credentialDescription"
+              type="text"
+              placeholder="e.g. Deploy token for CI access"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-600 mb-1">Secret / Token</label>
+            <input
+              v-model="form.credentialSecret"
+              type="password"
+              autocomplete="new-password"
+              placeholder="Personal access token, password, …"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <p class="mt-1 text-xs text-gray-500">Stored encrypted at rest. Never returned by the API.</p>
+          </div>
+          <p v-if="credentialErrorMessage" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {{ credentialErrorMessage }}
+          </p>
+        </div>
+
         <p v-if="errorMessage" class="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
           {{ errorMessage }}
         </p>
@@ -78,6 +115,7 @@
 import { ref, computed, onMounted } from 'vue'
 import type { Repository, CreateRepositoryRequest, UpdateRepositoryRequest } from '../types/repository'
 import { createRepository, updateRepository } from '../api/repositories'
+import { setRepositoryCredential } from '../api/git-credentials'
 
 const props = defineProps<{
   repository?: Repository
@@ -93,11 +131,14 @@ const isEditing = computed(() => props.repository !== undefined)
 const form = ref({
   name: '',
   remoteUrl: '',
-  defaultBranch: ''
+  defaultBranch: '',
+  credentialDescription: '',
+  credentialSecret: ''
 })
 
 const loading = ref(false)
 const errorMessage = ref('')
+const credentialErrorMessage = ref('')
 
 onMounted(() => {
   if (props.repository) {
@@ -110,6 +151,7 @@ onMounted(() => {
 async function handleSubmit() {
   loading.value = true
   errorMessage.value = ''
+  credentialErrorMessage.value = ''
 
   try {
     const remoteUrl = form.value.remoteUrl.trim() || null
@@ -130,6 +172,33 @@ async function handleSubmit() {
         defaultBranch
       }
       const created = await createRepository(request)
+
+      if (form.value.credentialSecret.trim()) {
+        try {
+          await setRepositoryCredential(created.id, {
+            description: form.value.credentialDescription.trim() || null,
+            secret: form.value.credentialSecret
+          })
+          // If no defaultBranch was specified, re-trigger auto-detection now that the
+          // credential is stored. The update call with defaultBranch: null causes the
+          // backend to query the remote again (this time authenticated).
+          if (!defaultBranch) {
+            const redetect: UpdateRepositoryRequest = {
+              name: created.name,
+              remoteUrl,
+              defaultBranch: null
+            }
+            const updated = await updateRepository(created.id, redetect)
+            emit('saved', updated)
+            return
+          }
+        } catch (credError) {
+          credentialErrorMessage.value = `Repository saved, but credential could not be stored: ${credError instanceof Error ? credError.message : 'Unknown error'}`
+          emit('saved', created)
+          return
+        }
+      }
+
       emit('saved', created)
     }
   } catch (error) {

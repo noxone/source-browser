@@ -14,4 +14,8 @@ public record SelectedIndexerContext(LanguageIndexer indexer, Object context) {
     public ParsedFile index(FileIdentifier fileId, FilePath path, String content) {
         return indexer.indexFile(fileId, path, content, context);
     }
+
+    public void cleanup() {
+        indexer.cleanup(context);
+    }
 }

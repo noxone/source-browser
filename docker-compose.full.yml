@@ -1,0 +1,106 @@
+services:
+
+  # ── Application ───────────────────────────────────────────────────────────────
+  app:
+    build: .
+    image: sourceviewer:latest
+    container_name: sourceviewer-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      # ── Database ──────────────────────────────────────────────────────────────
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/sourceviewer
+      QUARKUS_DATASOURCE_USERNAME: sourceviewer
+      QUARKUS_DATASOURCE_PASSWORD: sourceviewer
+
+      # ── OIDC ──────────────────────────────────────────────────────────────────
+      # QUARKUS_OIDC_AUTH_SERVER_URL overrides quarkus.oidc.auth-server-url
+      # directly (Quarkus env-var convention: dots → underscores, uppercase).
+      # This is more reliable than the OIDC_AUTH_SERVER_URL indirection and
+      # wins over any value in application.properties.
+      QUARKUS_OIDC_AUTH_SERVER_URL: http://keycloak:8080/realms/sourceviewer
+      # The browser must reach Keycloak via the host-exposed port (9090).
+      FRONTEND_OIDC_AUTHORITY: http://localhost:9090/realms/sourceviewer
+
+      # ── Secret encryption ─────────────────────────────────────────────────────
+      # Generate a production key with: openssl rand -base64 32
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+
+      # ── Repository storage ────────────────────────────────────────────────────
+      SOURCEVIEWER_REPOS_BASE_PATH: /var/repos
+    volumes:
+      - repos:/var/repos
+      - jdtls-workspace:/var/jdtls-workspace
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sourceviewer-postgres
+    environment:
+      POSTGRES_USER: sourceviewer
+      POSTGRES_PASSWORD: sourceviewer
+      POSTGRES_DB: sourceviewer
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sourceviewer -d sourceviewer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── pgAdmin ───────────────────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: sourceviewer-pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "9080:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "test@hlag.com"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./pgadmin/pgpass:/pgadmin4/pgpass:ro
+
+  # ── Keycloak ──────────────────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2
+    container_name: sourceviewer-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "9090:8080"
+    volumes:
+      - ./keycloak/sourceviewer-realm.json:/opt/keycloak/data/import/sourceviewer-realm.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+volumes:
+  postgres-data:
+  pgadmin-data:
+  repos:
+  jdtls-workspace:

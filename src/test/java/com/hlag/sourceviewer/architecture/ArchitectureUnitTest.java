@@ -114,11 +114,18 @@ public class ArchitectureUnitTest {
             .as("Qute templates may only be used in the view adapter");
 
     @ArchTest
-    static final ArchRule javaparser_nur_in_domain_und_application =
+    static final ArchRule treesitter_only_in_application =
         noClasses()
-            .that().resideOutsideOfPackages(DOMAIN, APPLICATION)
-            .should().dependOnClassesThat().resideInAPackage("com.github.javaparser..")
-            .as("JavaParser may only be used in domain and application");
+            .that().resideOutsideOfPackage(APPLICATION)
+            .should().dependOnClassesThat().resideInAPackage("ch.usi.si.seart.treesitter..")
+            .as("TreeSitter may only be used in the application layer");
+
+    @ArchTest
+    static final ArchRule lsp4j_only_in_application =
+        noClasses()
+            .that().resideOutsideOfPackage(APPLICATION)
+            .should().dependOnClassesThat().resideInAPackage("org.eclipse.lsp4j..")
+            .as("LSP4J may only be used in the application layer");
 
     @ArchTest
     static final ArchRule jackson_nur_in_adaptern =
