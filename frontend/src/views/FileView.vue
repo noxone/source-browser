@@ -93,15 +93,15 @@
         <p v-if="!fileInfo && !loading" class="text-xs text-gray-400 italic">Loading…</p>
       </div>
 
-      <!-- Commit info box (shown when commit data available) -->
-      <div v-if="fileInfo?.lastCommitSha" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
+      <!-- Commit info box (shown when any commit data available) -->
+      <div v-if="fileInfo?.lastCommitSha || fileInfo?.lastAuthorName || fileInfo?.lastAuthorEmail || fileInfo?.lastCommitDate || fileInfo?.lastCommitMessage" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Last Commit</h3>
         <dl class="space-y-2 text-sm">
-          <InfoRow label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
-          <InfoRow v-if="fileInfo.lastAuthorName" label="Author" :value="fileInfo.lastAuthorName" />
-          <InfoRow v-if="fileInfo.lastAuthorEmail" label="Email" :value="fileInfo.lastAuthorEmail" />
-          <InfoRow v-if="fileInfo.lastCommitDate" label="Date" :value="formatDate(fileInfo.lastCommitDate)" />
-          <div v-if="fileInfo.lastCommitMessage" class="pt-1">
+          <InfoRow v-if="fileInfo?.lastCommitSha" label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
+          <InfoRow v-if="fileInfo?.lastAuthorName" label="Author" :value="fileInfo.lastAuthorName" />
+          <InfoRow v-if="fileInfo?.lastAuthorEmail" label="Email" :value="fileInfo.lastAuthorEmail" />
+          <InfoRow v-if="fileInfo?.lastCommitDate" label="Date" :value="formatDate(fileInfo.lastCommitDate)" />
+          <div v-if="fileInfo?.lastCommitMessage" class="pt-1">
             <dt class="text-xs text-gray-400 mb-0.5">Message</dt>
             <dd class="text-gray-700 text-xs leading-relaxed break-words">{{ fileInfo.lastCommitMessage }}</dd>
           </div>
@@ -240,21 +240,7 @@ import type { JavadocProvider } from '../types/javadoc-provider'
 import { getFileInfoByPath, getFileContent, getTokenStream, getSymbol, getSymbolReferences } from '../api/files'
 import { listJavadocProviders } from '../api/javadoc'
 import { buildJavadocUrl } from '../utils/javadocUrl'
-
-/** Simple label+value display row used inside the info panel. */
-const InfoRow = {
-  props: { label: String, value: String, mono: Boolean, href: String },
-  template: `
-    <div>
-      <dt class="text-xs text-gray-400 mb-0.5">{{ label }}</dt>
-      <dd :class="['text-gray-700 break-all', mono ? 'font-mono text-xs' : '']">
-        <a v-if="href" :href="href" target="_blank" rel="noopener noreferrer"
-           class="text-indigo-600 hover:underline">{{ value }}</a>
-        <template v-else>{{ value }}</template>
-      </dd>
-    </div>
-  `
-}
+import InfoRow from '../components/InfoRow.vue'
 
 const route = useRoute()
 const repoName = computed(() => route.params.repoName as string)
