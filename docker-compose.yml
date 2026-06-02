@@ -35,7 +35,7 @@ services:
       - ./pgadmin/pgpass:/pgadmin4/pgpass:ro
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.2
+    image: quay.io/keycloak/keycloak:26.6
     container_name: sourceviewer-keycloak
     command: start-dev --import-realm
     environment:
