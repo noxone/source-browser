@@ -155,7 +155,7 @@
             <td class="px-6 py-4">
               <div class="relative group inline-block max-w-full">
                 <RouterLink
-                  :to="{ name: 'file', params: { fileId: result.fileId } }"
+                  :to="`/file/${encodeURIComponent(result.repositoryName)}/${result.filePath}`"
                   class="font-mono text-xs text-indigo-600 hover:underline"
                 >{{ truncatePath(result.filePath) }}</RouterLink>
 

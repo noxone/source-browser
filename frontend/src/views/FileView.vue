@@ -160,7 +160,7 @@
               <dt class="text-xs text-gray-400 mb-0.5">Defined in</dt>
               <dd>
                 <RouterLink
-                  :to="{ name: 'file', params: { fileId: symbolInfo.fileId } }"
+                  :to="`/file/${encodeURIComponent(symbolInfo.repositoryName!)}/${symbolInfo.filePath}`"
                   class="text-indigo-600 hover:text-indigo-800 font-mono text-xs break-all hover:underline"
                 >{{ symbolInfo.filePath }}</RouterLink>
               </dd>
@@ -215,7 +215,9 @@
             class="text-xs"
           >
             <RouterLink
-              :to="{ name: 'file', params: { fileId: ref.fileId } }"
+              :to="ref.repositoryName && ref.filePath
+                ? `/file/${encodeURIComponent(ref.repositoryName)}/${ref.filePath}`
+                : { name: 'search' }"
               class="text-indigo-600 hover:text-indigo-800 font-mono break-all hover:underline"
             >{{ ref.filePath ?? `File #${ref.fileId}` }}</RouterLink>
             <div class="text-gray-400 mt-0.5">
@@ -235,7 +237,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import type { FileInfo, Token, TokenKind, SymbolInfo, SymbolReference } from '../types/file'
 import type { JavadocProvider } from '../types/javadoc-provider'
-import { getFileInfo, getFileContent, getTokenStream, getSymbol, getSymbolReferences } from '../api/files'
+import { getFileInfoByPath, getFileContent, getTokenStream, getSymbol, getSymbolReferences } from '../api/files'
 import { listJavadocProviders } from '../api/javadoc'
 import { buildJavadocUrl } from '../utils/javadocUrl'
 
@@ -255,7 +257,8 @@ const InfoRow = {
 }
 
 const route = useRoute()
-const fileId = computed(() => Number(route.params.fileId))
+const repoName = computed(() => route.params.repoName as string)
+const filePath = computed(() => route.params.filePath as string)
 
 const fileInfo = ref<FileInfo | null>(null)
 const tokens = ref<Token[] | null>(null)
@@ -272,7 +275,7 @@ const javadocProviders = ref<JavadocProvider[]>([])
 
 // ── Data loading ─────────────────────────────────────────────────────
 
-async function load(id: number) {
+async function load(repo: string, path: string) {
   loading.value = true
   error.value = ''
   clearSelection()
@@ -281,13 +284,13 @@ async function load(id: number) {
   rawContent.value = null
 
   try {
-    const info = await getFileInfo(id)
+    const info = await getFileInfoByPath(repo, path)
     fileInfo.value = info
 
     if (info.hasTokenStream) {
-      tokens.value = await getTokenStream(id)
+      tokens.value = await getTokenStream(info.fileId)
     } else {
-      rawContent.value = await getFileContent(id)
+      rawContent.value = await getFileContent(info.fileId)
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Unknown error'
@@ -297,10 +300,10 @@ async function load(id: number) {
 }
 
 onMounted(() => {
-  load(fileId.value)
+  load(repoName.value, filePath.value)
   listJavadocProviders().then(p => { javadocProviders.value = p }).catch(() => {})
 })
-watch(fileId, (newId) => load(newId))
+watch([repoName, filePath], ([newRepo, newPath]) => load(newRepo, newPath))
 
 // ── Token selection ───────────────────────────────────────────────────
 

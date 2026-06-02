@@ -1,17 +1,23 @@
 package com.hlag.sourceviewer.adapter.incoming.rest;
 
+import com.hlag.sourceviewer.domain.model.identifier.BranchName;
+import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
+import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.query.FileDetails;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.port.incoming.GetFileContentUseCase;
+import com.hlag.sourceviewer.domain.port.incoming.GetFileInfoByPathUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.GetFileInfoUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.GetTokenStreamUseCase;
 import io.quarkus.security.Authenticated;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.BadRequestException;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.NotFoundException;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
@@ -27,15 +33,18 @@ public class FileResource {
     private final GetTokenStreamUseCase getTokenStreamUseCase;
     private final GetFileInfoUseCase getFileInfoUseCase;
     private final GetFileContentUseCase getFileContentUseCase;
+    private final GetFileInfoByPathUseCase getFileInfoByPathUseCase;
 
     @Inject
     public FileResource(
             GetTokenStreamUseCase getTokenStreamUseCase,
             GetFileInfoUseCase getFileInfoUseCase,
-            GetFileContentUseCase getFileContentUseCase) {
+            GetFileContentUseCase getFileContentUseCase,
+            GetFileInfoByPathUseCase getFileInfoByPathUseCase) {
         this.getTokenStreamUseCase = getTokenStreamUseCase;
         this.getFileInfoUseCase = getFileInfoUseCase;
         this.getFileContentUseCase = getFileContentUseCase;
+        this.getFileInfoByPathUseCase = getFileInfoByPathUseCase;
     }
 
     /**
@@ -81,6 +90,27 @@ public class FileResource {
     public String getFileContent(@PathParam("fileId") Long fileId) {
         return getFileContentUseCase.getFileContent(new FileIdentifier(fileId))
                 .orElseThrow(() -> new NotFoundException("Content not available for file: " + fileId));
+    }
+
+    /**
+     * Looks up a source file by repository name and file path.
+     * When {@code branch} is absent the repository's default branch is used.
+     *
+     * Example: GET /api/files/info-by-path?repo=my-service&amp;path=src/main/java/Foo.java
+     */
+    @GET
+    @Path("/info-by-path")
+    @Produces(MediaType.APPLICATION_JSON)
+    public FileDetails getFileInfoByPath(
+            @QueryParam("repo")   String repo,
+            @QueryParam("path")   String path,
+            @QueryParam("branch") String branch) {
+        if (repo == null || repo.isBlank())  throw new BadRequestException("repo is required");
+        if (path == null || path.isBlank())  throw new BadRequestException("path is required");
+        BranchName branchName = (branch != null && !branch.isBlank()) ? new BranchName(branch) : null;
+        return getFileInfoByPathUseCase
+                .getFileInfoByPath(new DisplayName(repo), new FilePath(path), branchName)
+                .orElseThrow(() -> new NotFoundException("File not found: repo=" + repo + ", path=" + path));
     }
 
     private static byte[] inflate(byte[] compressed) throws IOException {
