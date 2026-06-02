@@ -9,12 +9,19 @@ import com.hlag.sourceviewer.domain.model.source.SourceFile;
 import com.hlag.sourceviewer.domain.model.repository.ContentSha;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
  * Port for accessing persisted source file metadata.
  */
 public interface SourceFileRepository {
+
+    /** Returns the total number of indexed files. */
+    long countAll();
+
+    /** Returns a map of repository ID to file count for every repository that has at least one file. */
+    Map<Long, Long> countPerRepository();
 
     Optional<SourceFile> findByIdentifier(FileIdentifier identifier);
 

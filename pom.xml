@@ -166,6 +166,18 @@
             <version>${antlr4.version}</version>
         </dependency>
 
+        <!-- ── Language Server Protocol (LSP4J) ───────────────────────── -->
+        <dependency>
+            <groupId>org.eclipse.lsp4j</groupId>
+            <artifactId>org.eclipse.lsp4j</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.lsp4j</groupId>
+            <artifactId>org.eclipse.lsp4j.jsonrpc</artifactId>
+            <version>1.0.0</version>
+        </dependency>
+
         <!-- ── JGit ─────────────────────────────────────────────────── -->
         <dependency>
             <groupId>org.eclipse.jgit</groupId>

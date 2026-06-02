@@ -101,6 +101,13 @@ public class PanacheSymbolReferenceRepository implements SymbolReferenceReposito
     }
 
     @Override
+    public long countPublished() {
+        return ((Number) entityManager
+                .createQuery("SELECT COUNT(r) FROM SymbolReference r WHERE r.published = true")
+                .getSingleResult()).longValue();
+    }
+
+    @Override
     public List<SymbolReference> findByFileForScan(FileIdentifier fileIdentifier, Long scanJobId) {
         List<SymbolReference> unpublished = entityManager
                 .createQuery("FROM SymbolReference r WHERE r.fileIdentifier = :id" +

@@ -71,7 +71,7 @@ class ExecuteScanJobServiceUnitTest {
                 ManageAppSettingsUseCase.SETTING_SCAN_CHUNK_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_CHUNK_SIZE))
                 .thenReturn(ManageAppSettingsUseCase.DEFAULT_SCAN_CHUNK_SIZE);
-        when(languageIndexerRegistry.selectAndPrepare(any(), any())).thenReturn(Map.of());
+        when(languageIndexerRegistry.selectAndPrepare(any(), any(), any())).thenReturn(Map.of());
         service = new ExecuteScanJobService(
                 scanJobRepository, repositoryStore, gitAccess,
                 sourceFileRepository, documentRepository, transactionManager,

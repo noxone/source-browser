@@ -39,4 +39,7 @@ public interface DocumentRepository {
 
     /** Deletes all unpublished documents for the given scan job (cleanup on failure). */
     void deleteUnpublishedByScanJob(Long scanJobId);
+
+    /** Returns the total number of published documents. */
+    long countPublished();
 }

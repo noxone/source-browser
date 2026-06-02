@@ -44,4 +44,7 @@ public interface SymbolReferenceRepository {
      * Used during token-stream enrichment to attach symbol IDs to identifier tokens.
      */
     List<SymbolReference> findByFileForScan(FileIdentifier fileIdentifier, Long scanJobId);
+
+    /** Returns the total number of published references. */
+    long countPublished();
 }

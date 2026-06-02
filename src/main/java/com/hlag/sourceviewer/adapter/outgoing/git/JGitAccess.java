@@ -7,9 +7,11 @@ import com.hlag.sourceviewer.domain.model.identifier.CredentialScopeType;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.CommitInfo;
+import com.hlag.sourceviewer.application.storage.AppDirectoryManager;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.GitCredentialStore;
 import com.hlag.sourceviewer.domain.port.outgoing.SecretEncryptor;
+import com.hlag.sourceviewer.domain.service.RepositoryStorageDirectoryNameResolver;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.jgit.api.Git;
@@ -28,13 +30,11 @@ import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -47,8 +47,8 @@ public class JGitAccess implements GitAccess {
 
     private static final Logger logger = LoggerFactory.getLogger(JGitAccess.class);
 
-    @ConfigProperty(name = "sourceviewer.repos.base-path")
-    Optional<String> reposBasePath;
+    @Inject
+    AppDirectoryManager appDirectoryManager;
 
     @Inject
     GitCredentialStore gitCredentialStore;
@@ -274,31 +274,11 @@ public class JGitAccess implements GitAccess {
     }
 
     private Path resolveReposDir() {
-        return reposBasePath
-                .filter(s -> !s.isBlank())
-                .map(Path::of)
-                .orElse(Path.of(System.getProperty("java.io.tmpdir"), "sourceviewer-repos"));
+        return appDirectoryManager.getReposBaseDirectory();
     }
 
     private String localDirName(Repository repository) {
-        String id = "repo-" + repository.identifier().value();
-        return repository.remoteUrl()
-                .map(url -> id + "-" + sanitizedRemotePath(url.value()))
-                .orElse(id);
-    }
-
-    private String sanitizedRemotePath(String remoteUrl) {
-        try {
-            String path = URI.create(remoteUrl).getPath();
-            if (path.endsWith(".git")) {
-                path = path.substring(0, path.length() - 4);
-            }
-            // Replace every non-alphanumeric character with '-', collapse runs, trim edges
-            return path.replaceAll("[^A-Za-z0-9]+", "-").replaceAll("^-|-$", "");
-        } catch (Exception exception) {
-            // Fall back to a safe hash-free name if the URL is not parseable as a URI
-            return remoteUrl.replaceAll("[^A-Za-z0-9]+", "-").replaceAll("^-|-$", "");
-        }
+        return RepositoryStorageDirectoryNameResolver.localDirectoryName(repository);
     }
 
     private Optional<UsernamePasswordCredentialsProvider> credentialsForRepository(Repository repository) {

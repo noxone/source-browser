@@ -1,6 +1,7 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 import jakarta.enterprise.inject.Instance;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +18,7 @@ class LanguageIndexerRegistryUnitTest {
 
     private static final Path REPO_ROOT = Path.of("/repo");
     private static final List<FilePath> FILES = List.of(new FilePath("Foo.java"));
+    private static final Repository REPOSITORY = mock(Repository.class);
 
     private LanguageIndexerRegistry registryWith(LanguageIndexer... indexers) {
         Instance<LanguageIndexer> instance = mock();
@@ -32,11 +34,11 @@ class LanguageIndexerRegistryUnitTest {
         var low = mockIndexer("java", 100, true);
         var registry = registryWith(low, high);
 
-        Map<String, SelectedIndexerContext> result = registry.selectAndPrepare(REPO_ROOT, FILES);
+        Map<String, SelectedIndexerContext> result = registry.selectAndPrepare(REPO_ROOT, FILES, REPOSITORY);
 
         assertThat(result).containsKey("java");
-        verify(high).prepare(REPO_ROOT);
-        verify(low, never()).prepare(any());
+        verify(high).prepare(REPO_ROOT, REPOSITORY);
+        verify(low, never()).prepare(any(), any());
     }
 
     @Test
@@ -45,11 +47,11 @@ class LanguageIndexerRegistryUnitTest {
         var low = mockIndexer("java", 100, true);
         var registry = registryWith(high, low);
 
-        Map<String, SelectedIndexerContext> result = registry.selectAndPrepare(REPO_ROOT, FILES);
+        Map<String, SelectedIndexerContext> result = registry.selectAndPrepare(REPO_ROOT, FILES, REPOSITORY);
 
         assertThat(result).containsKey("java");
-        verify(low).prepare(REPO_ROOT);
-        verify(high, never()).prepare(any());
+        verify(low).prepare(REPO_ROOT, REPOSITORY);
+        verify(high, never()).prepare(any(), any());
     }
 
     @Test
@@ -57,7 +59,7 @@ class LanguageIndexerRegistryUnitTest {
         var indexer = mockIndexer("java", 100, false);
         var registry = registryWith(indexer);
 
-        Map<String, SelectedIndexerContext> result = registry.selectAndPrepare(REPO_ROOT, FILES);
+        Map<String, SelectedIndexerContext> result = registry.selectAndPrepare(REPO_ROOT, FILES, REPOSITORY);
 
         assertThat(result).isEmpty();
     }
@@ -68,7 +70,7 @@ class LanguageIndexerRegistryUnitTest {
         var kotlinIndexer = mockIndexer("kotlin", 100, true);
         var registry = registryWith(javaIndexer, kotlinIndexer);
 
-        Map<String, SelectedIndexerContext> result = registry.selectAndPrepare(REPO_ROOT, FILES);
+        Map<String, SelectedIndexerContext> result = registry.selectAndPrepare(REPO_ROOT, FILES, REPOSITORY);
 
         assertThat(result).containsKeys("java", "kotlin");
     }
@@ -78,7 +80,7 @@ class LanguageIndexerRegistryUnitTest {
         when(indexer.supportedLanguage()).thenReturn(language);
         when(indexer.priority()).thenReturn(priority);
         when(indexer.analyze(any(), any())).thenReturn(analyzeResult);
-        when(indexer.prepare(any())).thenReturn(null);
+        when(indexer.prepare(any(), any())).thenReturn(null);
         return indexer;
     }
 }

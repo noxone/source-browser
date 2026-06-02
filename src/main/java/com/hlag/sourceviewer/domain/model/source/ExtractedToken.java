@@ -15,7 +15,8 @@ public record ExtractedToken(
         String text,
         TokenKind kind,
         String qualifiedName,
-        Long symbolId
+        Long symbolId,
+        String hoverText
 ) {
     public enum TokenKind {
         KEYWORD,

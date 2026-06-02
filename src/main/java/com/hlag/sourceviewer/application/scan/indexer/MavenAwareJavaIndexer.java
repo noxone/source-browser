@@ -9,6 +9,7 @@ import com.hlag.sourceviewer.application.scan.indexer.maven.MavenRepositoryProvi
 import com.hlag.sourceviewer.application.scan.indexer.maven.PomFileLoader;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -76,7 +77,7 @@ public class MavenAwareJavaIndexer implements LanguageIndexer {
 
     @Override
     public int priority() {
-        return 10;
+        return 60;
     }
 
     @Override
@@ -99,7 +100,7 @@ public class MavenAwareJavaIndexer implements LanguageIndexer {
     }
 
     @Override
-    public Object prepare(Path repoRoot) {
+    public Object prepare(Path repoRoot, Repository repository) {
         var solver = javaFileParser.buildCombinedTypeSolver(repoRoot);
         for (Path pomDir : findPomDirectories(repoRoot)) {
             List<Path> jars = resolveMavenDependencies(pomDir);

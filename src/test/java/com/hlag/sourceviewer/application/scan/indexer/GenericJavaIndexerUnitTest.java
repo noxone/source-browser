@@ -2,6 +2,7 @@ package com.hlag.sourceviewer.application.scan.indexer;
 
 import com.hlag.sourceviewer.application.scan.JavaFileParser;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -50,10 +51,11 @@ class GenericJavaIndexerUnitTest {
     @Test
     void prepare_delegates_to_javaFileParser_buildTypeSolver() {
         var path = Path.of("/repo");
+        var repository = mock(Repository.class);
         var solver = mock(com.github.javaparser.resolution.TypeSolver.class);
         when(javaFileParser.buildTypeSolver(path)).thenReturn(solver);
 
-        Object ctx = indexer.prepare(path);
+        Object ctx = indexer.prepare(path, repository);
 
         assertThat(ctx).isInstanceOf(JavaIndexingContext.class);
         assertThat(((JavaIndexingContext) ctx).typeSolver()).isSameAs(solver);

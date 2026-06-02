@@ -3,6 +3,7 @@ package com.hlag.sourceviewer.application.scan.indexer;
 import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
+import com.hlag.sourceviewer.domain.model.repository.Repository;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -41,10 +42,11 @@ public interface LanguageIndexer {
      * Prepares resources needed for indexing (e.g. builds a TypeSolver, resolves Maven
      * artifacts). Called once per scan before any {@link #indexFile} calls.
      *
-     * @param repoRoot local filesystem path of the checked-out repository
+     * @param repoRoot   local filesystem path of the checked-out repository
+     * @param repository the repository domain object for this scan
      * @return an opaque context object carrying all per-scan state; passed back to {@link #indexFile}
      */
-    Object prepare(Path repoRoot);
+    Object prepare(Path repoRoot, Repository repository);
 
     /** Returns {@code true} if this indexer can process the given file path. */
     boolean handles(FilePath path);
@@ -59,4 +61,14 @@ public interface LanguageIndexer {
      * @return parsed declarations and pending references
      */
     ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context);
+
+    /**
+     * Releases any resources held by the context produced by {@link #prepare}.
+     *
+     * <p>Called once after all {@link #indexFile} invocations for a scan are complete.
+     * The default implementation is a no-op.</p>
+     *
+     * @param context the context object produced by {@link #prepare} for this scan
+     */
+    default void teardown(Object context) {}
 }

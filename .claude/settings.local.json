@@ -24,7 +24,8 @@
       "Bash(./mvnw compile *)",
       "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
       "Bash(mkdir -p /tmp/hibernate-deploy-src)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(grep -E \"\\\\.\\(java|ts|tsx|js\\)$\")"
     ]
   }
 }

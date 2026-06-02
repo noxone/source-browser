@@ -5,6 +5,7 @@ import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.RepositoryIdentifier;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
+import com.hlag.sourceviewer.domain.port.outgoing.LanguageServerWorkspaceStore;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,13 +18,15 @@ class ManageRepositoriesServiceUnitTest {
 
     private RepositoryStore repositoryStore;
     private GitAccess gitAccess;
+    private LanguageServerWorkspaceStore languageServerWorkspaceStore;
     private ManageRepositoriesService service;
 
     @BeforeEach
     void setUp() {
         repositoryStore = mock(RepositoryStore.class);
         gitAccess = mock(GitAccess.class);
-        service = new ManageRepositoriesService(repositoryStore, gitAccess);
+        languageServerWorkspaceStore = mock(LanguageServerWorkspaceStore.class);
+        service = new ManageRepositoriesService(repositoryStore, gitAccess, languageServerWorkspaceStore);
     }
 
     // ── deleteRepository ──────────────────────────────────────────────────────
@@ -38,6 +41,7 @@ class ManageRepositoriesServiceUnitTest {
 
         verify(repositoryStore).delete(identifier);
         verify(gitAccess).deleteLocalRepository(repository);
+        verify(languageServerWorkspaceStore).deleteWorkspace(repository);
     }
 
     @Test
@@ -49,6 +53,7 @@ class ManageRepositoriesServiceUnitTest {
 
         verify(repositoryStore).delete(identifier);
         verify(gitAccess, never()).deleteLocalRepository(any());
+        verify(languageServerWorkspaceStore, never()).deleteWorkspace(any());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

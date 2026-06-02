@@ -904,8 +904,8 @@
           <thead class="bg-gray-50">
             <tr>
               <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-64">Setting</th>
-              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Description</th>
-              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-48">Value</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-128">Description</th>
+              <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Value</th>
               <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-24">Action</th>
             </tr>
           </thead>
@@ -935,6 +935,61 @@
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Storage Directories -->
+      <div class="mt-10">
+        <div class="mb-4">
+          <h3 class="text-base font-semibold text-gray-900">Storage Directories</h3>
+          <p class="mt-1 text-sm text-gray-500">Directories managed by the application at runtime. Read-only.</p>
+        </div>
+
+        <!-- Loading -->
+        <div v-if="storageDirectoriesLoading" class="flex items-center justify-center py-8 text-gray-400">
+          <svg class="animate-spin w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+          Loading directories…
+        </div>
+
+        <!-- Error -->
+        <div v-else-if="storageDirectoriesLoadError" class="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-sm text-red-700">
+          <p class="font-semibold">Failed to load storage directories</p>
+          <p class="mt-1">{{ storageDirectoriesLoadError }}</p>
+          <button @click="fetchStorageDirectories" class="mt-3 underline hover:no-underline">Try again</button>
+        </div>
+
+        <!-- Directory list -->
+        <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-64">Directory</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Path</th>
+                <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider w-16"></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              <tr v-for="dir in storageDirectories" :key="dir.name" class="hover:bg-gray-50 transition-colors">
+                <td class="px-6 py-4 text-sm font-medium text-gray-700">{{ dir.name }}</td>
+                <td class="px-6 py-4 font-mono text-sm text-gray-500">{{ dir.path }}</td>
+                <td class="px-6 py-4 text-right">
+                  <button
+                    @click="copyToClipboard(dir.path)"
+                    class="text-gray-400 hover:text-gray-700 transition-colors"
+                    title="Copy path"
+                  >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-linecap="round" stroke-linejoin="round"/>
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+                    </svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
     </div> <!-- end settings tab -->
@@ -1162,7 +1217,8 @@ import { triggerGroupScan } from '../api/git-provider-groups'
 import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
 import { listServiceAccounts, deleteServiceAccount } from '../api/service-accounts'
 import { listScanJobs, deleteScanJob, deleteAllQueuedScanJobs } from '../api/scan-jobs'
-import { listSettings, updateSetting } from '../api/settings'
+import { listSettings, updateSetting, listStorageDirectories } from '../api/settings'
+import type { StorageDirectory } from '../types/storage-directory'
 import type { JavadocProvider } from '../types/javadoc-provider'
 import { listJavadocProviders, createJavadocProvider, updateJavadocProvider, deleteJavadocProvider } from '../api/javadoc'
 import RepositoryFormModal from '../components/RepositoryFormModal.vue'
@@ -1668,9 +1724,32 @@ const settingsLoading = ref(false)
 const settingsLoadError = ref('')
 const settingsDirty = ref<Record<string, string>>({})
 
+const storageDirectories = ref<StorageDirectory[]>([])
+const storageDirectoriesLoading = ref(false)
+const storageDirectoriesLoadError = ref('')
+
 watch(activeTab, (tab) => {
-  if (tab === 'settings') fetchSettings()
+  if (tab === 'settings') {
+    fetchSettings()
+    fetchStorageDirectories()
+  }
 })
+
+async function fetchStorageDirectories() {
+  storageDirectoriesLoading.value = true
+  storageDirectoriesLoadError.value = ''
+  try {
+    storageDirectories.value = await listStorageDirectories()
+  } catch (error) {
+    storageDirectoriesLoadError.value = error instanceof Error ? error.message : 'Unknown error'
+  } finally {
+    storageDirectoriesLoading.value = false
+  }
+}
+
+async function copyToClipboard(text: string) {
+  await navigator.clipboard.writeText(text)
+}
 
 async function fetchSettings() {
   settingsLoading.value = true
