@@ -36,7 +36,7 @@
 
         <!-- Build plugins -->
         <compiler.plugin.version>3.15.0</compiler.plugin.version>
-        <surefire.plugin.version>3.5.5</surefire.plugin.version>
+        <surefire.plugin.version>3.5.6</surefire.plugin.version>
         <flyway.plugin.version>10.17.0</flyway.plugin.version>
         <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
