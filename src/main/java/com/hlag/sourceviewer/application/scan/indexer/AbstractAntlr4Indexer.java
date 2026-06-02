@@ -121,6 +121,7 @@ public abstract class AbstractAntlr4Indexer implements LanguageIndexer {
                     text,
                     mapTokenKind(token.getType()),
                     null,
+                    null,
                     null));
         }
         return result;

@@ -1,7 +1,5 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.application.scan.antlr.JavaLexer;
 import com.hlag.sourceviewer.application.scan.lsp.LanguageServerSession;
@@ -21,6 +19,7 @@ import com.hlag.sourceviewer.domain.model.source.Symbol;
 import com.hlag.sourceviewer.infrastructure.lsp.jdtls.JdtlsNotifyingLanguageClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,7 +36,6 @@ import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.Token;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
-import org.eclipse.lsp4j.DocumentSymbolParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.MarkupContent;
@@ -56,8 +54,9 @@ import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind
  * JavaParser fallback.</p>
  *
  * <p>When JDTLS is configured, a language-server session is started during {@link #prepare}
- * and used in {@link #indexFile} to query per-token hover details from the language server.
- * The results are written to the log for diagnostic purposes.</p>
+ * and used in {@link #indexFile} to query per-token hover details (type signatures, method
+ * signatures) from the language server. The results are stored in the token stream and
+ * surfaced in the UI.</p>
  */
 @ApplicationScoped
 public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
@@ -66,8 +65,6 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
     private static final int CLASS_BODY_UNKNOWN = -1;
     private static final int HOVER_REQUEST_TIMEOUT_SECONDS = 5;
-    private static final int DOCUMENT_SYNC_WAIT_MILLIS = 250;
-    private static final int HOVER_RAW_SAMPLE_LIMIT = 3;
 
     private static final Set<String> TYPE_KEYWORDS = Set.of("class", "interface", "enum", "record");
     private static final Set<String> MEMBER_MODIFIERS = Set.of(
@@ -191,7 +188,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         if (context instanceof JavaAntlrIndexingContext(
             Path repoRoot, Optional<LanguageServerSession<JdtlsNotifyingLanguageClient>> session
         ) && session.isPresent()) {
-            queryAndLogLspDetails(path, content, parsedFile, session.get());
+            parsedFile = enrichWithHover(path, content, parsedFile, session.get());
         }
 
         return parsedFile;
@@ -208,104 +205,78 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
     // -- LSP hover queries -----------------------------------------------------
 
-    private void queryAndLogLspDetails(FilePath path, String content, ParsedFile parsedFile,
+    private ParsedFile enrichWithHover(FilePath path, String content, ParsedFile parsedFile,
                                        LanguageServerSession<JdtlsNotifyingLanguageClient> session) {
         final var fileUri = resolveFileUri(session.projectRoot(), path);
         openDocument(session, fileUri, content);
         try {
-            queryTokenHovers(session, fileUri, parsedFile);
+            session.languageClient().awaitDiagnostics(fileUri, 5, TimeUnit.SECONDS);
+
+            int queried = 0;
+            int withContent = 0;
+            int emptyOrNull = 0;
+            int failed = 0;
+            List<ExtractedToken> enriched = new ArrayList<>(parsedFile.tokens().size());
+
+            for (ExtractedToken token : parsedFile.tokens()) {
+                if (token.kind() != IDENTIFIER) {
+                    enriched.add(token);
+                    continue;
+                }
+                queried++;
+                // LSP positions are 0-based; ANTLR lines are 1-based, columns are 0-based
+                Position position = new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
+                HoverParams params = new HoverParams(new TextDocumentIdentifier(fileUri), position);
+                try {
+                    Hover hover = session.textDocumentService().hover(params)
+                            .get(HOVER_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    String hoverText = hover != null && hover.getContents() != null
+                            ? formatHoverContents(hover) : null;
+                    if (hoverText != null && !hoverText.isBlank()) {
+                        withContent++;
+                        enriched.add(new ExtractedToken(token.line(), token.columnStart(), token.columnEnd(),
+                                token.text(), token.kind(), token.qualifiedName(), token.symbolId(), hoverText));
+                    } else {
+                        emptyOrNull++;
+                        enriched.add(token);
+                    }
+                } catch (Exception e) {
+                    failed++;
+                    logger.trace("[JDTLS] hover failed for token '{}' at {}:{}: {}",
+                            token.text(), token.line(), token.columnStart(), e.getMessage());
+                    enriched.add(token);
+                }
+            }
+
+            String filename = Path.of(java.net.URI.create(fileUri)).getFileName().toString();
+            logger.debug("[JDTLS] {}: {} identifiers queried, {} with hover, {} empty/null, {} failed",
+                    filename, queried, withContent, emptyOrNull, failed);
+
+            return new ParsedFile(parsedFile.declarations(), parsedFile.references(), enriched);
         } finally {
             closeDocument(session, fileUri);
         }
     }
 
     private static String resolveFileUri(Path repoRoot, FilePath path) {
-        // FilePath uses forward slashes; resolve via Path API for OS compatibility
-        return repoRoot.resolve(Path.of(path.value())).toAbsolutePath().toUri().toString();
+        Path resolved = repoRoot.resolve(Path.of(path.value()));
+        try {
+            // toRealPath() resolves symlinks so the URI matches what JDTLS sends back
+            // (e.g. on macOS /var is a symlink to /private/var)
+            return resolved.toRealPath().toUri().toString();
+        } catch (IOException e) {
+            return resolved.toAbsolutePath().toUri().toString();
+        }
     }
 
     private static void openDocument(LanguageServerSession<JdtlsNotifyingLanguageClient> session, String fileUri, String content) {
+        // Register latch before didOpen — JDTLS may publish diagnostics immediately
+        session.languageClient().waitForDiagnostics(fileUri);
         TextDocumentItem item = new TextDocumentItem(fileUri, "java", 1, content);
         session.textDocumentService().didOpen(new DidOpenTextDocumentParams(item));
-        pauseForDocumentSync();
     }
 
-    private void queryTokenHovers(LanguageServerSession<JdtlsNotifyingLanguageClient> session, String fileUri, ParsedFile parsedFile) {
-        final var identifier = new TextDocumentIdentifier(fileUri);
-        try {
-            var symbols = session.textDocumentService().documentSymbol(new DocumentSymbolParams(identifier)).get(5, SECONDS);
-            System.out.println(symbols);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-
-        int queried = 0;
-        int withContent = 0;
-        int empty = 0;
-        int nullHover = 0;
-        int failed = 0;
-        int sampledEmptyPayloads = 0;
-
-        for (ExtractedToken token : parsedFile.tokens()) {
-            if (token.kind() != IDENTIFIER) {
-                continue;
-            }
-
-            queried++;
-            // LSP positions are 0-based; ANTLR lines are 1-based, columns are 0-based
-            Position position = new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
-            HoverParams params = new HoverParams(new TextDocumentIdentifier(fileUri), position);
-
-            try {
-                Hover hover = session.textDocumentService().hover(params)
-                        .get(HOVER_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                if (hover != null && hover.getContents() != null) {
-                    String hoverText = formatHoverContents(hover);
-                    if (!hoverText.isBlank()) {
-                        withContent++;
-                        logger.debug("[JDTLS] '{}' at {}:{} - {}",
-                                token.text(),
-                                token.line(),
-                                token.columnStart(),
-                                hoverText);
-                    } else {
-                        empty++;
-                        if (sampledEmptyPayloads < HOVER_RAW_SAMPLE_LIMIT) {
-                            Object rawContents = hover.getContents();
-                            logger.debug("[JDTLS] empty hover payload sample {} for {}:{} token='{}' type={} value={}",
-                                    sampledEmptyPayloads + 1,
-                                    token.line(),
-                                    token.columnStart(),
-                                    token.text(),
-                                    rawContents == null ? "null" : rawContents.getClass().getName(),
-                                    String.valueOf(rawContents));
-                            sampledEmptyPayloads++;
-                        }
-                    }
-                } else {
-                    nullHover++;
-                }
-            } catch (Exception e) {
-                failed++;
-                logger.trace("[JDTLS] hover failed for token '{}' at {}:{}: {}",
-                        token.text(), token.line(), token.columnStart(),
-                        e.getMessage());
-            }
-        }
-
-        logger.debug("[JDTLS] hover summary for {}: queried identifiers={}, withContent={}, empty={}, null={}, failed={}",
-                fileUri, queried, withContent, empty, nullHover, failed);
-    }
-
-    private static void pauseForDocumentSync() {
-        try {
-            Thread.sleep(DOCUMENT_SYNC_WAIT_MILLIS);
-        } catch (InterruptedException interruptedException) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    private static void closeDocument(LanguageServerSession session, String fileUri) {
+    private static void closeDocument(LanguageServerSession<?> session, String fileUri) {
         session.textDocumentService().didClose(
                 new DidCloseTextDocumentParams(new TextDocumentIdentifier(fileUri)));
     }

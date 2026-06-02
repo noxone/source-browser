@@ -37,7 +37,7 @@ public class JdtlsReadinessStrategy implements LspReadinessStrategy {
     private static final Logger logger = LoggerFactory.getLogger(JdtlsReadinessStrategy.class);
 
     private static final long QUIESCENCE_POLL_INTERVAL_MILLIS = 500;
-    private static final int QUIESCENCE_STABLE_CHECKS_REQUIRED = 10; // 4 × 500 ms = 2 s with empty queue
+    private static final int QUIESCENCE_STABLE_CHECKS_REQUIRED = 4; // 4 × 500 ms = 2 s with empty queue
 
     /**
      * Waits for JDTLS {@code ServiceReady} followed by quiescence of all background build jobs.

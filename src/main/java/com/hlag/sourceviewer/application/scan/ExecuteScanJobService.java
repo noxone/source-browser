@@ -495,7 +495,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             }
             enriched.add(new ExtractedToken(
                     token.line(), token.columnStart(), token.columnEnd(),
-                    token.text(), token.kind(), qn, symId));
+                    token.text(), token.kind(), qn, symId, token.hoverText()));
         }
 
         tokenStreamRepository.storeUnpublished(fileId, enriched, scanJobId);

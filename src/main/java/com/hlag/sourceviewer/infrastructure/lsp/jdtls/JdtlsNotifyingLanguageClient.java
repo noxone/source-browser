@@ -156,7 +156,6 @@ public class JdtlsNotifyingLanguageClient extends LoggingLanguageClient implemen
         String uri = diagnostics.getUri();
         List<Diagnostic> diags = diagnostics.getDiagnostics();
         logger.debug("JDTLS diagnostics for {}: {} entries", uri, diags.size());
-        logDiagnosticSummaryOnce(uri, diags);
 
         // Warten-Latch auflösen, falls jemand auf diese URI wartet
         CountDownLatch latch = pendingDiagnostics.remove(uri);
@@ -174,6 +173,7 @@ public class JdtlsNotifyingLanguageClient extends LoggingLanguageClient implemen
     }
 
     public boolean awaitDiagnostics(String uri, long timeout, TimeUnit unit) {
+        logger.trace("[JDTLS] Awaiting JDTLS diagnostics for {}", uri);
         CountDownLatch latch = pendingDiagnostics.get(uri);
         if (latch == null) {
             logger.warn("[JDTLS] awaitDiagnostics() called without previous waitForDiagnostics() for: {}", uri);
@@ -186,6 +186,7 @@ public class JdtlsNotifyingLanguageClient extends LoggingLanguageClient implemen
                 logger.warn("[JDTLS] Timeout:  no diagnostics received for {}", uri);
                 pendingDiagnostics.remove(uri);
             }
+            logger.trace("[JDTLS] Successfully await diagnostics for {}", uri);
             return received;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -204,27 +205,5 @@ public class JdtlsNotifyingLanguageClient extends LoggingLanguageClient implemen
             return "unknown";
         }
         return token.isLeft() ? token.getLeft() : String.valueOf(token.getRight());
-    }
-
-    private void logDiagnosticSummaryOnce(String uri, List<Diagnostic> diagnostics) {
-        if (uri == null || diagnostics == null || diagnostics.isEmpty()) {
-            return;
-        }
-        if (!summarizedDiagnosticUris.add(uri)) {
-            return;
-        }
-
-        int sampleCount = Math.min(3, diagnostics.size());
-        for (int index = 0; index < sampleCount; index++) {
-            Diagnostic diagnostic = diagnostics.get(index);
-            DiagnosticSeverity severity = diagnostic.getSeverity();
-            logger.info(
-                    "JDTLS diagnostic sample {}/{} for {} [{}]: {}",
-                    index + 1,
-                    sampleCount,
-                    uri,
-                    severity == null ? "UNKNOWN" : severity,
-                    diagnostic.getMessage());
-        }
     }
 }

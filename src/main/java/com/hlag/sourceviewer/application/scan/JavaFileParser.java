@@ -189,6 +189,7 @@ public class JavaFileParser {
                                 token.getText(),
                                 mapTokenKind(token),
                                 null,
+                                null,
                                 null));
                     }
                     return (List<ExtractedToken>) result;

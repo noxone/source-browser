@@ -33,6 +33,7 @@ public class TokenStreamSerializer {
                 node.put("k",  t.kind().name());
                 if (t.qualifiedName() != null) node.put("q", t.qualifiedName());
                 if (t.symbolId()      != null) node.put("s", t.symbolId());
+                if (t.hoverText()     != null) node.put("h", t.hoverText());
                 array.add(node);
             }
             byte[] json = mapper.writeValueAsBytes(array);

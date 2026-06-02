@@ -31,6 +31,8 @@ export interface Token {
   q?: string
   /** Symbol ID (present for symbol declarations / references) */
   s?: number
+  /** Hover text from LSP (type/method signatures) */
+  h?: string
 }
 
 export type TokenKind =

@@ -143,6 +143,7 @@
             <InfoRow label="Name" :value="symbolInfo.simpleName" mono />
             <InfoRow label="Qualified name" :value="symbolInfo.qualifiedName" mono />
             <InfoRow v-if="symbolInfo.signature" label="Signature" :value="symbolInfo.signature" mono />
+            <InfoRow v-if="selectedToken?.h" label="Type info" :value="selectedToken.h" mono />
             <div v-if="javadocUrl">
               <dt class="text-xs text-gray-400 mb-0.5">Javadoc</dt>
               <dd>
@@ -175,6 +176,7 @@
           <dl class="space-y-2 text-sm">
             <InfoRow label="Text" :value="selectedToken.t" mono />
             <InfoRow v-if="selectedToken.q" label="Qualified name" :value="selectedToken.q" mono />
+            <InfoRow v-if="selectedToken.h" label="Type info" :value="selectedToken.h" mono />
             <div v-if="javadocUrl">
               <dt class="text-xs text-gray-400 mb-0.5">Javadoc</dt>
               <dd>
