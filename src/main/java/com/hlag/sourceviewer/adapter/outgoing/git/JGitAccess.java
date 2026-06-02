@@ -7,6 +7,7 @@ import com.hlag.sourceviewer.domain.model.identifier.CredentialScopeType;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.CommitInfo;
+import com.hlag.sourceviewer.application.storage.AppDirectoryManager;
 import com.hlag.sourceviewer.domain.port.outgoing.GitAccess;
 import com.hlag.sourceviewer.domain.port.outgoing.GitCredentialStore;
 import com.hlag.sourceviewer.domain.port.outgoing.SecretEncryptor;
@@ -29,7 +30,6 @@ import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.TreeWalk;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,8 +47,8 @@ public class JGitAccess implements GitAccess {
 
     private static final Logger logger = LoggerFactory.getLogger(JGitAccess.class);
 
-    @ConfigProperty(name = "sourceviewer.repos.base-path")
-    Optional<String> reposBasePath;
+    @Inject
+    AppDirectoryManager appDirectoryManager;
 
     @Inject
     GitCredentialStore gitCredentialStore;
@@ -274,10 +274,7 @@ public class JGitAccess implements GitAccess {
     }
 
     private Path resolveReposDir() {
-        return reposBasePath
-                .filter(s -> !s.isBlank())
-                .map(Path::of)
-                .orElse(Path.of(System.getProperty("java.io.tmpdir"), "sourceviewer-repos"));
+        return appDirectoryManager.getReposBaseDirectory();
     }
 
     private String localDirName(Repository repository) {

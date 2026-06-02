@@ -1,7 +1,7 @@
 package com.hlag.sourceviewer.infrastructure.lsp;
 
+import com.hlag.sourceviewer.application.storage.AppDirectoryManager;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
-import com.hlag.sourceviewer.domain.port.incoming.ManageAppSettingsUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.LanguageServerWorkspaceStore;
 import com.hlag.sourceviewer.domain.service.RepositoryStorageDirectoryNameResolver;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -19,11 +19,11 @@ public class FileSystemLanguageServerWorkspaceStore implements LanguageServerWor
 
     private static final Logger logger = LoggerFactory.getLogger(FileSystemLanguageServerWorkspaceStore.class);
 
-    private final ManageAppSettingsUseCase manageAppSettingsUseCase;
+    private final AppDirectoryManager appDirectoryManager;
 
     @Inject
-    public FileSystemLanguageServerWorkspaceStore(ManageAppSettingsUseCase manageAppSettingsUseCase) {
-        this.manageAppSettingsUseCase = manageAppSettingsUseCase;
+    public FileSystemLanguageServerWorkspaceStore(AppDirectoryManager appDirectoryManager) {
+        this.appDirectoryManager = appDirectoryManager;
     }
 
     @Override
@@ -58,13 +58,7 @@ public class FileSystemLanguageServerWorkspaceStore implements LanguageServerWor
     }
 
     private Path resolveBasePath() {
-        String configured = manageAppSettingsUseCase.getSetting(
-                ManageAppSettingsUseCase.SETTING_LSP_WORKSPACE_BASE_PATH,
-                ManageAppSettingsUseCase.DEFAULT_LSP_WORKSPACE_BASE_PATH);
-        if (configured == null || configured.isBlank()) {
-            return Path.of(System.getProperty("user.home"), "sourceviewer-lsp-workspaces");
-        }
-        return Path.of(configured);
+        return appDirectoryManager.getLspWorkspaceBaseDirectory();
     }
 }
 
