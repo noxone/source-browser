@@ -2,6 +2,7 @@ package com.hlag.sourceviewer.application.scan.indexer;
 
 import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.application.scan.antlr.JavaLexer;
+import com.hlag.sourceviewer.application.scan.lsp.DiagnosticsCapable;
 import com.hlag.sourceviewer.application.scan.lsp.LanguageServerSession;
 import com.hlag.sourceviewer.application.scan.lsp.LspManager;
 import com.hlag.sourceviewer.application.scan.lsp.LspProjectContext;
@@ -16,7 +17,6 @@ import com.hlag.sourceviewer.domain.model.repository.Repository;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
 import com.hlag.sourceviewer.domain.model.source.Symbol;
-import com.hlag.sourceviewer.infrastructure.lsp.jdtls.JdtlsNotifyingLanguageClient;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
@@ -115,7 +115,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             logger.info("Using nested Java project root for JDTLS: '{}' (scan root remains '{}')",
                     lspProjectRoot, repoRoot);
         }
-        Optional<LanguageServerSession<JdtlsNotifyingLanguageClient>> session = tryStartLspSession(lspProjectRoot, repository);
+        Optional<LanguageServerSession<? extends DiagnosticsCapable>> session = tryStartLspSession(lspProjectRoot, repository);
         return new JavaAntlrIndexingContext(repoRoot, session);
     }
 
@@ -161,12 +161,13 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                 || "settings.gradle.kts".equals(name);
     }
 
-    private Optional<LanguageServerSession<JdtlsNotifyingLanguageClient>> tryStartLspSession(Path repoRoot, Repository repository) {
+    @SuppressWarnings("unchecked")
+    private Optional<LanguageServerSession<? extends DiagnosticsCapable>> tryStartLspSession(Path repoRoot, Repository repository) {
         if (lspManager == null) {
             return Optional.empty();
         }
         try {
-            LanguageServerSession<JdtlsNotifyingLanguageClient> session = lspManager.getLspForLanguage(
+            LanguageServerSession<? extends DiagnosticsCapable> session = lspManager.getLspForLanguage(
                     "java", new LspProjectContext(repository, repoRoot));
             logger.info("JDTLS session started for repository '{}'", repository.name().value());
             return Optional.of(session);
@@ -185,10 +186,8 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     public ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context) {
         ParsedFile parsedFile = super.indexFile(fileId, path, content, context);
 
-        if (context instanceof JavaAntlrIndexingContext(
-            Path repoRoot, Optional<LanguageServerSession<JdtlsNotifyingLanguageClient>> session
-        ) && session.isPresent()) {
-            parsedFile = enrichWithHover(path, content, parsedFile, session.get());
+        if (context instanceof JavaAntlrIndexingContext ctx && ctx.session().isPresent()) {
+            parsedFile = enrichWithHover(path, content, parsedFile, ctx.session().get());
         }
 
         return parsedFile;
@@ -206,7 +205,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     // -- LSP hover queries -----------------------------------------------------
 
     private ParsedFile enrichWithHover(FilePath path, String content, ParsedFile parsedFile,
-                                       LanguageServerSession<JdtlsNotifyingLanguageClient> session) {
+                                       LanguageServerSession<? extends DiagnosticsCapable> session) {
         final var fileUri = resolveFileUri(session.projectRoot(), path);
         openDocument(session, fileUri, content);
         try {
@@ -269,7 +268,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         }
     }
 
-    private static void openDocument(LanguageServerSession<JdtlsNotifyingLanguageClient> session, String fileUri, String content) {
+    private static void openDocument(LanguageServerSession<? extends DiagnosticsCapable> session, String fileUri, String content) {
         // Register latch before didOpen — JDTLS may publish diagnostics immediately
         session.languageClient().waitForDiagnostics(fileUri);
         TextDocumentItem item = new TextDocumentItem(fileUri, "java", 1, content);

@@ -49,9 +49,4 @@ public class AppDirectoryManager {
         return Map.of("Git repositories", getReposBaseDirectory(),
                 "JDTLS workspaces", getLspWorkspaceBaseDirectory());
     }
-
-    void onStart(@Observes StartupEvent ev) {
-        logger.info("Storage directories:");
-        getAllDirectories().forEach((name, path) -> logger.info("  {} : {}", name, path));
-    }
 }

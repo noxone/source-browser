@@ -1,5 +1,6 @@
 package com.hlag.sourceviewer.infrastructure.lsp.jdtls;
 
+import com.hlag.sourceviewer.application.scan.lsp.DiagnosticsCapable;
 import com.hlag.sourceviewer.infrastructure.lsp.LoggingLanguageClient;
 import java.util.Collections;
 import java.util.List;
@@ -34,7 +35,7 @@ import org.slf4j.LoggerFactory;
  * <p>Use {@link #activeWorkDoneProgressSnapshot()} to inspect currently running jobs
  * and {@link #activeWorkDoneProgressCount()} for a fast empty-check.</p>
  */
-public class JdtlsNotifyingLanguageClient extends LoggingLanguageClient implements JdtlsLanguageClient {
+public class JdtlsNotifyingLanguageClient extends LoggingLanguageClient implements JdtlsLanguageClient, DiagnosticsCapable {
 
     private static final Logger logger = LoggerFactory.getLogger(JdtlsNotifyingLanguageClient.class);
 
