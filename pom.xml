@@ -33,6 +33,8 @@
         <maven.resolver.version>1.9.27</maven.resolver.version>
         <maven.version>3.9.16</maven.version>
         <antlr4.version>4.13.2</antlr4.version>
+        <gitlab4j.version>6.3.0</gitlab4j.version>
+        <plexus.utils.version>3.6.1</plexus.utils.version>
 
         <!-- Build plugins -->
         <compiler.plugin.version>3.15.0</compiler.plugin.version>
@@ -94,15 +96,24 @@
                 <artifactId>maven-resolver-transport-http</artifactId>
                 <version>${maven.resolver.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.maven</groupId>
+                <artifactId>maven-model</artifactId>
+                <version>${maven.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
     <dependencies>
 
-        <!-- ── Quarkus ──────────────────────────────────────────────── -->
+        <!-- ── Quarkus extensions (wired at build time, no direct imports) ── -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-rest-jackson</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -111,10 +122,6 @@
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-security</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-rest-jackson</artifactId>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
@@ -140,33 +147,137 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
         </dependency>
-        <!-- MicroProfile Context Propagation für ManagedExecutor -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-smallrye-context-propagation</artifactId>
         </dependency>
 
-        <!-- ── Hibernate ORM + Panache ──────────────────────────────── -->
+        <!-- ── Quarkus SPI / runtime APIs used directly ──────────────────── -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jackson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus.qute</groupId>
+            <artifactId>qute-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus.security</groupId>
+            <artifactId>quarkus-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-vertx-http</artifactId>
+        </dependency>
+
+        <!-- ── Hibernate ORM + Panache ──────────────────────────────────── -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-hibernate-orm-panache</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-core</artifactId>
+        </dependency>
 
-        <!-- ── JavaParser ────────────────────────────────────────────── -->
+        <!-- ── Jakarta EE APIs ───────────────────────────────────────────── -->
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.enterprise</groupId>
+            <artifactId>jakarta.enterprise.cdi-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.inject</groupId>
+            <artifactId>jakarta.inject-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.persistence</groupId>
+            <artifactId>jakarta.persistence-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.transaction</groupId>
+            <artifactId>jakarta.transaction-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.ws.rs</groupId>
+            <artifactId>jakarta.ws.rs-api</artifactId>
+        </dependency>
+
+        <!-- ── MicroProfile APIs ─────────────────────────────────────────── -->
+        <dependency>
+            <groupId>org.eclipse.microprofile.config</groupId>
+            <artifactId>microprofile-config-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.microprofile.context-propagation</groupId>
+            <artifactId>microprofile-context-propagation-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.eclipse.microprofile.health</groupId>
+            <artifactId>microprofile-health-api</artifactId>
+        </dependency>
+
+        <!-- ── Reactive ──────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>io.smallrye.reactive</groupId>
+            <artifactId>mutiny</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-web</artifactId>
+        </dependency>
+
+        <!-- ── Jackson ───────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- ── SLF4J ─────────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- ── JavaParser ────────────────────────────────────────────────── -->
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-core</artifactId>
+            <version>${javaparser.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.github.javaparser</groupId>
             <artifactId>javaparser-symbol-solver-core</artifactId>
             <version>${javaparser.version}</version>
         </dependency>
 
-        <!-- ── ANTLR4 runtime (for language-specific indexers) ───────── -->
+        <!-- ── ANTLR4 runtime (for language-specific indexers) ───────────── -->
         <dependency>
             <groupId>org.antlr</groupId>
             <artifactId>antlr4-runtime</artifactId>
             <version>${antlr4.version}</version>
         </dependency>
 
-        <!-- ── Language Server Protocol (LSP4J) ───────────────────────── -->
+        <!-- ── Language Server Protocol (LSP4J) ──────────────────────────── -->
         <dependency>
             <groupId>org.eclipse.lsp4j</groupId>
             <artifactId>org.eclipse.lsp4j</artifactId>
@@ -178,20 +289,28 @@
             <version>1.0.0</version>
         </dependency>
 
-        <!-- ── JGit ─────────────────────────────────────────────────── -->
+        <!-- ── JGit ──────────────────────────────────────────────────────── -->
         <dependency>
             <groupId>org.eclipse.jgit</groupId>
             <artifactId>org.eclipse.jgit</artifactId>
             <version>${jgit.version}</version>
         </dependency>
 
-        <!-- ── Maven Resolver (for MavenAwareJavaIndexer) ───────────── -->
+        <!-- ── Maven Resolver (for MavenAwareJavaIndexer) ────────────────── -->
         <!-- maven-resolver-supplier provides RepositorySystemSupplier and pulls in
              impl, connector-basic, and transports transitively -->
         <dependency>
             <groupId>org.apache.maven.resolver</groupId>
             <artifactId>maven-resolver-supplier</artifactId>
             <version>${maven.resolver.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven.resolver</groupId>
+            <artifactId>maven-resolver-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.maven.resolver</groupId>
+            <artifactId>maven-resolver-util</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.maven</groupId>
@@ -203,22 +322,36 @@
             <artifactId>maven-model-builder</artifactId>
             <version>${maven.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.maven</groupId>
+            <artifactId>maven-model</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.codehaus.plexus</groupId>
+            <artifactId>plexus-utils</artifactId>
+            <version>${plexus.utils.version}</version>
+        </dependency>
 
-        <!-- ── MapStruct ─────────────────────────────────────────────── -->
+        <!-- ── MapStruct ──────────────────────────────────────────────────── -->
         <dependency>
             <groupId>org.mapstruct</groupId>
             <artifactId>mapstruct</artifactId>
             <version>${mapstruct.version}</version>
         </dependency>
 
-        <!-- ── GitLab4J ─────────────────────────────────────────────── -->
+        <!-- ── GitLab4J ───────────────────────────────────────────────────── -->
         <dependency>
             <groupId>org.gitlab4j</groupId>
             <artifactId>gitlab4j-api</artifactId>
-            <version>6.3.0</version>
+            <version>${gitlab4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.gitlab4j</groupId>
+            <artifactId>gitlab4j-models</artifactId>
+            <version>${gitlab4j.version}</version>
         </dependency>
 
-        <!-- ── Annotation processors (compile-time only) ────────────── -->
+        <!-- ── Annotation processors (compile-time only) ─────────────────── -->
         <dependency>
             <groupId>org.mapstruct</groupId>
             <artifactId>mapstruct-processor</artifactId>
@@ -226,20 +359,35 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- ── Tests ─────────────────────────────────────────────────── -->
+        <!-- ── Tests ─────────────────────────────────────────────────────── -->
         <dependency>
             <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-junit5</artifactId>
+            <artifactId>quarkus-junit</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-junit5-mockito</artifactId>
+            <artifactId>quarkus-junit-mockito</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.rest-assured</groupId>
             <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.hamcrest</groupId>
+            <artifactId>hamcrest</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -258,7 +406,12 @@
             <artifactId>quarkus-test-common</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- Testcontainers for infrastructure tests -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-test-security</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Testcontainers: loaded by Quarkus DevServices at runtime, no direct imports -->
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>postgresql</artifactId>
@@ -274,14 +427,20 @@
         <!-- ArchUnit -->
         <dependency>
             <groupId>com.tngtech.archunit</groupId>
-            <artifactId>archunit-junit5</artifactId>
+            <artifactId>archunit</artifactId>
             <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
-        <!-- quarkus-test-security: @TestSecurity for API tests that bypass OIDC -->
         <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-test-security</artifactId>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5-api</artifactId>
+            <version>${archunit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5-engine</artifactId>
+            <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -320,6 +479,35 @@
                         <id>resolve-processor-paths</id>
                         <phase>initialize</phase>
                         <goals><goal>properties</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>analyze-dependencies</id>
+                        <phase>verify</phase>
+                        <goals><goal>analyze-only</goal></goals>
+                        <configuration>
+                            <failOnWarning>true</failOnWarning>
+                            <ignoredUnusedDeclaredDependencies>
+                                <!-- Quarkus build-time extensions: wired by the Quarkus build, not through direct class imports -->
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-rest</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-rest-jackson</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-jdbc-postgresql</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-flyway</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-qute</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-scheduler</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-smallrye-health</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-micrometer-registry-prometheus</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-smallrye-context-propagation</ignoredUnusedDeclaredDependency>
+                                <!-- Annotation processor: provided scope, excluded from runtime classpath -->
+                                <ignoredUnusedDeclaredDependency>org.mapstruct:mapstruct-processor</ignoredUnusedDeclaredDependency>
+                                <!-- Quarkus DevServices: loaded at test runtime via classloader, no direct imports -->
+                                <ignoredUnusedDeclaredDependency>org.testcontainers:postgresql</ignoredUnusedDeclaredDependency>
+                                <ignoredUnusedDeclaredDependency>org.testcontainers:junit-jupiter</ignoredUnusedDeclaredDependency>
+                                <!-- JUnit platform engine for ArchUnit: no direct class imports needed -->
+                                <ignoredUnusedDeclaredDependency>com.tngtech.archunit:archunit-junit5-engine</ignoredUnusedDeclaredDependency>
+                                <!-- Mockito wiring for @InjectMock (@InjectMock itself is in quarkus-test-common) -->
+                                <ignoredUnusedDeclaredDependency>io.quarkus:quarkus-junit-mockito</ignoredUnusedDeclaredDependency>
+                            </ignoredUnusedDeclaredDependencies>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
