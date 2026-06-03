@@ -21,6 +21,12 @@ export async function getFileInfo(fileId: number): Promise<FileInfo> {
   return handleResponse(await authenticatedFetch(`/api/files/${fileId}/info`))
 }
 
+export async function getFileInfoByPath(repoName: string, filePath: string, branch?: string): Promise<FileInfo> {
+  const params = new URLSearchParams({ repo: repoName, path: filePath })
+  if (branch) params.set('branch', branch)
+  return handleResponse(await authenticatedFetch(`/api/files/info-by-path?${params}`))
+}
+
 export async function getFileContent(fileId: number): Promise<string> {
   return handleTextResponse(await authenticatedFetch(`/api/files/${fileId}/content`))
 }

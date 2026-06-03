@@ -19,7 +19,7 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/file/:fileId',
+      path: '/file/:repoName/:filePath(.*)',
       name: 'file',
       component: FileView,
       meta: { requiresAuth: true }

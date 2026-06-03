@@ -25,7 +25,8 @@
       "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
       "Bash(mkdir -p /tmp/hibernate-deploy-src)",
       "Read(//tmp/**)",
-      "Bash(grep -E \"\\\\.\\(java|ts|tsx|js\\)$\")"
+      "Bash(grep -E \"\\\\.\\(java|ts|tsx|js\\)$\")",
+      "Bash(mvn verify *)"
     ]
   }
 }

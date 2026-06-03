@@ -83,25 +83,39 @@
         </div>
         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">File</h3>
         <dl class="space-y-2 text-sm">
-          <InfoRow v-if="fileInfo" label="Branch" :value="fileInfo.branch" />
-          <InfoRow v-if="fileInfo" label="Language" :value="fileInfo.language" />
+          <InfoRow v-if="fileInfo?.language && fileInfo.language !== 'unknown'" label="Language" :value="fileInfo.language" />
           <InfoRow v-if="fileInfo?.fileSize != null" label="Size" :value="formatFileSize(fileInfo.fileSize)" />
           <InfoRow v-if="fileInfo" label="Indexed at" :value="formatDate(fileInfo.indexedAt)" />
-          <InfoRow v-if="fileInfo?.lastCommitSha" label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
-          <InfoRow v-if="fileInfo?.lastCommitDate" label="Commit date" :value="formatDate(fileInfo.lastCommitDate)" />
         </dl>
         <p v-if="!fileInfo && !loading" class="text-xs text-gray-400 italic">Loading…</p>
       </div>
 
-      <!-- Commit info box (shown when commit data available) -->
-      <div v-if="fileInfo?.lastCommitSha" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
-        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Last Commit</h3>
-        <dl class="space-y-2 text-sm">
-          <InfoRow label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
-          <InfoRow v-if="fileInfo.lastAuthorName" label="Author" :value="fileInfo.lastAuthorName" />
-          <InfoRow v-if="fileInfo.lastAuthorEmail" label="Email" :value="fileInfo.lastAuthorEmail" />
-          <InfoRow v-if="fileInfo.lastCommitDate" label="Date" :value="formatDate(fileInfo.lastCommitDate)" />
-          <div v-if="fileInfo.lastCommitMessage" class="pt-1">
+      <!-- Commit info box (shown when any commit data available) -->
+      <div v-if="fileInfo?.branch || fileInfo?.lastCommitSha || fileInfo?.lastAuthorName || fileInfo?.lastAuthorEmail || fileInfo?.lastCommitDate || fileInfo?.lastCommitMessage" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
+        <button
+          class="flex items-center justify-between w-full text-left"
+          @click="commitBoxCollapsed = !commitBoxCollapsed"
+        >
+          <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Commit</h3>
+          <svg
+            class="w-3.5 h-3.5 text-gray-400 transition-transform"
+            :class="commitBoxCollapsed ? '' : 'rotate-180'"
+            fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <dl v-if="!commitBoxCollapsed" class="space-y-2 text-sm mt-3">
+          <InfoRow v-if="fileInfo?.branch" label="Branch" :value="fileInfo.branch" />
+          <InfoRow v-if="fileInfo?.lastCommitSha" label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
+          <InfoRow
+            v-if="fileInfo?.lastAuthorName || fileInfo?.lastAuthorEmail"
+            label="Author"
+            :value="fileInfo?.lastAuthorName ?? fileInfo?.lastAuthorEmail ?? ''"
+            :href="fileInfo?.lastAuthorEmail ? `mailto:${fileInfo.lastAuthorEmail}` : undefined"
+          />
+          <InfoRow v-if="fileInfo?.lastCommitDate" label="Date" :value="formatDate(fileInfo.lastCommitDate)" />
+          <div v-if="fileInfo?.lastCommitMessage" class="pt-1">
             <dt class="text-xs text-gray-400 mb-0.5">Message</dt>
             <dd class="text-gray-700 text-xs leading-relaxed break-words">{{ fileInfo.lastCommitMessage }}</dd>
           </div>
@@ -160,7 +174,7 @@
               <dt class="text-xs text-gray-400 mb-0.5">Defined in</dt>
               <dd>
                 <RouterLink
-                  :to="{ name: 'file', params: { fileId: symbolInfo.fileId } }"
+                  :to="`/file/${encodeURIComponent(symbolInfo.repositoryName!)}/${symbolInfo.filePath}`"
                   class="text-indigo-600 hover:text-indigo-800 font-mono text-xs break-all hover:underline"
                 >{{ symbolInfo.filePath }}</RouterLink>
               </dd>
@@ -215,7 +229,9 @@
             class="text-xs"
           >
             <RouterLink
-              :to="{ name: 'file', params: { fileId: ref.fileId } }"
+              :to="ref.repositoryName && ref.filePath
+                ? `/file/${encodeURIComponent(ref.repositoryName)}/${ref.filePath}`
+                : { name: 'search' }"
               class="text-indigo-600 hover:text-indigo-800 font-mono break-all hover:underline"
             >{{ ref.filePath ?? `File #${ref.fileId}` }}</RouterLink>
             <div class="text-gray-400 mt-0.5">
@@ -235,27 +251,19 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import type { FileInfo, Token, TokenKind, SymbolInfo, SymbolReference } from '../types/file'
 import type { JavadocProvider } from '../types/javadoc-provider'
-import { getFileInfo, getFileContent, getTokenStream, getSymbol, getSymbolReferences } from '../api/files'
+import { getFileInfoByPath, getFileContent, getTokenStream, getSymbol, getSymbolReferences } from '../api/files'
 import { listJavadocProviders } from '../api/javadoc'
 import { buildJavadocUrl } from '../utils/javadocUrl'
+import InfoRow from '../components/InfoRow.vue'
 
-/** Simple label+value display row used inside the info panel. */
-const InfoRow = {
-  props: { label: String, value: String, mono: Boolean, href: String },
-  template: `
-    <div>
-      <dt class="text-xs text-gray-400 mb-0.5">{{ label }}</dt>
-      <dd :class="['text-gray-700 break-all', mono ? 'font-mono text-xs' : '']">
-        <a v-if="href" :href="href" target="_blank" rel="noopener noreferrer"
-           class="text-indigo-600 hover:underline">{{ value }}</a>
-        <template v-else>{{ value }}</template>
-      </dd>
-    </div>
-  `
-}
+const COMMIT_BOX_COLLAPSED_KEY = 'fileView.commitBox.collapsed'
 
 const route = useRoute()
-const fileId = computed(() => Number(route.params.fileId))
+const repoName = computed(() => route.params.repoName as string)
+const filePath = computed(() => route.params.filePath as string)
+
+const commitBoxCollapsed = ref(localStorage.getItem(COMMIT_BOX_COLLAPSED_KEY) === 'true')
+watch(commitBoxCollapsed, v => localStorage.setItem(COMMIT_BOX_COLLAPSED_KEY, String(v)))
 
 const fileInfo = ref<FileInfo | null>(null)
 const tokens = ref<Token[] | null>(null)
@@ -272,7 +280,7 @@ const javadocProviders = ref<JavadocProvider[]>([])
 
 // ── Data loading ─────────────────────────────────────────────────────
 
-async function load(id: number) {
+async function load(repo: string, path: string) {
   loading.value = true
   error.value = ''
   clearSelection()
@@ -281,13 +289,13 @@ async function load(id: number) {
   rawContent.value = null
 
   try {
-    const info = await getFileInfo(id)
+    const info = await getFileInfoByPath(repo, path)
     fileInfo.value = info
 
     if (info.hasTokenStream) {
-      tokens.value = await getTokenStream(id)
+      tokens.value = await getTokenStream(info.fileId)
     } else {
-      rawContent.value = await getFileContent(id)
+      rawContent.value = await getFileContent(info.fileId)
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Unknown error'
@@ -297,10 +305,10 @@ async function load(id: number) {
 }
 
 onMounted(() => {
-  load(fileId.value)
+  load(repoName.value, filePath.value)
   listJavadocProviders().then(p => { javadocProviders.value = p }).catch(() => {})
 })
-watch(fileId, (newId) => load(newId))
+watch([repoName, filePath], ([newRepo, newPath]) => load(newRepo, newPath))
 
 // ── Token selection ───────────────────────────────────────────────────
 
