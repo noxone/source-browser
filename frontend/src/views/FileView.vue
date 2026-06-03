@@ -108,8 +108,12 @@
         <dl v-if="!commitBoxCollapsed" class="space-y-2 text-sm mt-3">
           <InfoRow v-if="fileInfo?.branch" label="Branch" :value="fileInfo.branch" />
           <InfoRow v-if="fileInfo?.lastCommitSha" label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
-          <InfoRow v-if="fileInfo?.lastAuthorName" label="Author" :value="fileInfo.lastAuthorName" />
-          <InfoRow v-if="fileInfo?.lastAuthorEmail" label="Email" :value="fileInfo.lastAuthorEmail" />
+          <InfoRow
+            v-if="fileInfo?.lastAuthorName || fileInfo?.lastAuthorEmail"
+            label="Author"
+            :value="fileInfo?.lastAuthorName ?? fileInfo?.lastAuthorEmail ?? ''"
+            :href="fileInfo?.lastAuthorEmail ? `mailto:${fileInfo.lastAuthorEmail}` : undefined"
+          />
           <InfoRow v-if="fileInfo?.lastCommitDate" label="Date" :value="formatDate(fileInfo.lastCommitDate)" />
           <div v-if="fileInfo?.lastCommitMessage" class="pt-1">
             <dt class="text-xs text-gray-400 mb-0.5">Message</dt>
