@@ -1,7 +1,9 @@
 package com.hlag.sourceviewer.application.settings;
 
 import com.hlag.sourceviewer.domain.model.setting.AppSetting;
+import com.hlag.sourceviewer.domain.model.setting.SettingChangedEvent;
 import com.hlag.sourceviewer.domain.port.outgoing.SettingsRepository;
+import jakarta.enterprise.event.Event;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -17,12 +19,14 @@ import static org.mockito.Mockito.*;
 class ManageAppSettingsServiceUnitTest {
 
     private SettingsRepository settingsRepository;
+    @SuppressWarnings("unchecked")
+    private Event<SettingChangedEvent> settingChangedEvent = mock(Event.class);
     private ManageAppSettingsService service;
 
     @BeforeEach
     void setUp() {
         settingsRepository = mock(SettingsRepository.class);
-        service = new ManageAppSettingsService(settingsRepository);
+        service = new ManageAppSettingsService(settingsRepository, settingChangedEvent);
     }
 
     // ── listSettings ──────────────────────────────────────────────────────────
