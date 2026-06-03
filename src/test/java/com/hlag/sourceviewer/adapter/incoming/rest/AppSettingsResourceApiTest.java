@@ -38,7 +38,8 @@ class AppSettingsResourceApiTest {
                 "quarkus.datasource.jdbc.min-size", "0",
                 "quarkus.datasource.jdbc.max-size", "1",
                 "quarkus.hibernate-orm.schema-management.strategy", "none",
-                "quarkus.flyway.enabled", "false"
+                "quarkus.flyway.enabled", "false",
+                "quarkus.scheduler.enabled", "false"
             );
         }
     }

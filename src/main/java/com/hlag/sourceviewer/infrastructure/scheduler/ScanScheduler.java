@@ -67,6 +67,10 @@ public class ScanScheduler {
     }
 
     void onStart(@Observes StartupEvent event) {
+        if (!scheduler.isStarted()) {
+            logger.info("Scheduler not started, skipping dynamic job setup");
+            return;
+        }
         String syncCron = manageAppSettingsUseCase.getSetting(
                 SETTING_SCHEDULER_SYNC_GROUPS_CRON, DEFAULT_SCHEDULER_SYNC_GROUPS_CRON);
         String detectCron = manageAppSettingsUseCase.getSetting(
