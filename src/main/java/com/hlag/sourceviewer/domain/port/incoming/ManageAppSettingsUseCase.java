@@ -132,6 +132,18 @@ public interface ManageAppSettingsUseCase {
     /** Default value for {@link #SETTING_LSP_JDTLS_MAVEN_LOCAL_REPO} (empty = Maven default). */
     String DEFAULT_LSP_JDTLS_MAVEN_LOCAL_REPO = "";
 
+    /** Cron expression controlling when the daily group-sync job fires. */
+    String SETTING_SCHEDULER_SYNC_GROUPS_CRON = "scheduler.sync-groups.cron";
+
+    /** Default value for {@link #SETTING_SCHEDULER_SYNC_GROUPS_CRON}: every day at 02:00 UTC. */
+    String DEFAULT_SCHEDULER_SYNC_GROUPS_CRON = "0 0 2 * * ?";
+
+    /** Cron expression controlling when the hourly change-detection job fires. */
+    String SETTING_SCHEDULER_DETECT_CHANGES_CRON = "scheduler.detect-changes.cron";
+
+    /** Default value for {@link #SETTING_SCHEDULER_DETECT_CHANGES_CRON}: every full hour. */
+    String DEFAULT_SCHEDULER_DETECT_CHANGES_CRON = "0 0 * * * ?";
+
     // ── Operations ────────────────────────────────────────────────────────────
 
     /**

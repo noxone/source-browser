@@ -68,7 +68,11 @@ public class AppSettingsResource {
             Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_CONFIG_MACOS_ARM64,
                     "Absolute path of the JDTLS config directory for macOS arm64"),
             Map.entry(ManageAppSettingsUseCase.SETTING_LSP_JDTLS_MAVEN_LOCAL_REPO,
-                    "Absolute path to a custom Maven local repository for JDTLS to use (leave empty to use ~/.m2/repository)")
+                    "Absolute path to a custom Maven local repository for JDTLS to use (leave empty to use ~/.m2/repository)"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_SCHEDULER_SYNC_GROUPS_CRON,
+                    "Cron expression for the daily group-sync job (Quarkus/Quartz format, e.g. \"0 0 2 * * ?\")"),
+            Map.entry(ManageAppSettingsUseCase.SETTING_SCHEDULER_DETECT_CHANGES_CRON,
+                    "Cron expression for the repository change-detection job (Quarkus/Quartz format, e.g. \"0 0 * * * ?\")")
     );
 
     /** Known settings with their default values, in display order. */
@@ -129,7 +133,13 @@ public class AppSettingsResource {
                     ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_CONFIG_MACOS_ARM64, false),
             new KnownSetting(
                     ManageAppSettingsUseCase.SETTING_LSP_JDTLS_MAVEN_LOCAL_REPO,
-                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_MAVEN_LOCAL_REPO, false)
+                    ManageAppSettingsUseCase.DEFAULT_LSP_JDTLS_MAVEN_LOCAL_REPO, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_SCHEDULER_SYNC_GROUPS_CRON,
+                    ManageAppSettingsUseCase.DEFAULT_SCHEDULER_SYNC_GROUPS_CRON, false),
+            new KnownSetting(
+                    ManageAppSettingsUseCase.SETTING_SCHEDULER_DETECT_CHANGES_CRON,
+                    ManageAppSettingsUseCase.DEFAULT_SCHEDULER_DETECT_CHANGES_CRON, false)
     );
 
     private record KnownSetting(String key, String defaultValue, boolean secret) {}
