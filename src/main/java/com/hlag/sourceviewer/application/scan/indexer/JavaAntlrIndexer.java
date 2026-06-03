@@ -90,7 +90,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
     @Override
     public int priority() {
-        return 50;
+        return 100;
     }
 
     @Override

@@ -1,6 +1,5 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
-import com.hlag.sourceviewer.application.scan.JavaFileParser;
 import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
@@ -80,7 +79,7 @@ public abstract class AbstractAntlr4Indexer implements LanguageIndexer {
     /**
      * Tokenises {@code content} with the ANTLR4 lexer, maps each token to an
      * {@link ExtractedToken}, and delegates to {@link #extractSymbols} for optional symbol
-     * extraction. Returns a {@link JavaFileParser.ParsedFile} with an empty reference list
+     * extraction. Returns a {@link ParsedFile} with an empty reference list
      * (ANTLR4 indexers do not resolve cross-file references).
      */
     @Override
