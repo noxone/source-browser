@@ -83,20 +83,18 @@
         </div>
         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">File</h3>
         <dl class="space-y-2 text-sm">
-          <InfoRow v-if="fileInfo" label="Branch" :value="fileInfo.branch" />
-          <InfoRow v-if="fileInfo" label="Language" :value="fileInfo.language" />
+          <InfoRow v-if="fileInfo?.language && fileInfo.language !== 'unknown'" label="Language" :value="fileInfo.language" />
           <InfoRow v-if="fileInfo?.fileSize != null" label="Size" :value="formatFileSize(fileInfo.fileSize)" />
           <InfoRow v-if="fileInfo" label="Indexed at" :value="formatDate(fileInfo.indexedAt)" />
-          <InfoRow v-if="fileInfo?.lastCommitSha" label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
-          <InfoRow v-if="fileInfo?.lastCommitDate" label="Commit date" :value="formatDate(fileInfo.lastCommitDate)" />
         </dl>
         <p v-if="!fileInfo && !loading" class="text-xs text-gray-400 italic">Loading…</p>
       </div>
 
       <!-- Commit info box (shown when any commit data available) -->
-      <div v-if="fileInfo?.lastCommitSha || fileInfo?.lastAuthorName || fileInfo?.lastAuthorEmail || fileInfo?.lastCommitDate || fileInfo?.lastCommitMessage" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
+      <div v-if="fileInfo?.branch || fileInfo?.lastCommitSha || fileInfo?.lastAuthorName || fileInfo?.lastAuthorEmail || fileInfo?.lastCommitDate || fileInfo?.lastCommitMessage" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
         <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Last Commit</h3>
         <dl class="space-y-2 text-sm">
+          <InfoRow v-if="fileInfo?.branch" label="Branch" :value="fileInfo.branch" />
           <InfoRow v-if="fileInfo?.lastCommitSha" label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
           <InfoRow v-if="fileInfo?.lastAuthorName" label="Author" :value="fileInfo.lastAuthorName" />
           <InfoRow v-if="fileInfo?.lastAuthorEmail" label="Email" :value="fileInfo.lastAuthorEmail" />
