@@ -92,8 +92,20 @@
 
       <!-- Commit info box (shown when any commit data available) -->
       <div v-if="fileInfo?.branch || fileInfo?.lastCommitSha || fileInfo?.lastAuthorName || fileInfo?.lastAuthorEmail || fileInfo?.lastCommitDate || fileInfo?.lastCommitMessage" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
-        <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Last Commit</h3>
-        <dl class="space-y-2 text-sm">
+        <button
+          class="flex items-center justify-between w-full text-left"
+          @click="commitBoxCollapsed = !commitBoxCollapsed"
+        >
+          <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Commit</h3>
+          <svg
+            class="w-3.5 h-3.5 text-gray-400 transition-transform"
+            :class="commitBoxCollapsed ? '' : 'rotate-180'"
+            fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
+          >
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <dl v-if="!commitBoxCollapsed" class="space-y-2 text-sm mt-3">
           <InfoRow v-if="fileInfo?.branch" label="Branch" :value="fileInfo.branch" />
           <InfoRow v-if="fileInfo?.lastCommitSha" label="Commit" :value="fileInfo.lastCommitSha.slice(0, 8)" :href="commitUrl ?? undefined" mono />
           <InfoRow v-if="fileInfo?.lastAuthorName" label="Author" :value="fileInfo.lastAuthorName" />
@@ -240,9 +252,14 @@ import { listJavadocProviders } from '../api/javadoc'
 import { buildJavadocUrl } from '../utils/javadocUrl'
 import InfoRow from '../components/InfoRow.vue'
 
+const COMMIT_BOX_COLLAPSED_KEY = 'fileView.commitBox.collapsed'
+
 const route = useRoute()
 const repoName = computed(() => route.params.repoName as string)
 const filePath = computed(() => route.params.filePath as string)
+
+const commitBoxCollapsed = ref(localStorage.getItem(COMMIT_BOX_COLLAPSED_KEY) === 'true')
+watch(commitBoxCollapsed, v => localStorage.setItem(COMMIT_BOX_COLLAPSED_KEY, String(v)))
 
 const fileInfo = ref<FileInfo | null>(null)
 const tokens = ref<Token[] | null>(null)
