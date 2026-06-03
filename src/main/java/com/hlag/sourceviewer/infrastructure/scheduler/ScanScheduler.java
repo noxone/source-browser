@@ -60,7 +60,7 @@ public class ScanScheduler {
         });
     }
 
-    @Scheduled(cron = "0 */15 * * * ?", concurrentExecution = ConcurrentExecution.SKIP)
+    @Scheduled(cron = "0 0 * * * ?", concurrentExecution = ConcurrentExecution.SKIP)
     public void detectChangesInAllRepositories() {
         logger.debug("Cron scan started");
 
