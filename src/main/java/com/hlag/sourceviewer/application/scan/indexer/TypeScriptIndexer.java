@@ -1,5 +1,6 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
+import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.application.scan.antlr.TypeScriptLexer;
 import com.hlag.sourceviewer.domain.model.identifier.ColumnNumber;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
@@ -8,6 +9,7 @@ import com.hlag.sourceviewer.domain.model.identifier.LineNumber;
 import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
 import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
+import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
 import com.hlag.sourceviewer.domain.model.source.Symbol;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -86,6 +88,73 @@ public class TypeScriptIndexer extends AbstractAntlr4Indexer {
     }
 
     /**
+     * Runs ANTLR tokenisation and then applies TypeScript-specific import group assignment
+     * so that all identifiers within an {@code import … from 'module';} statement share a
+     * {@code groupId} and the module path as their {@code qualifiedName}.
+     */
+    @Override
+    public ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context) {
+        ParsedFile parsedFile = super.indexFile(fileId, path, content, context);
+        List<ExtractedToken> grouped = assignImportGroups(parsedFile.tokens());
+        return new ParsedFile(parsedFile.declarations(), parsedFile.references(), grouped);
+    }
+
+    /**
+     * Assigns import groups to TypeScript import statements.
+     *
+     * <p>Supports {@code import [type] { Foo, Bar } from 'module'} and
+     * {@code import Def from 'module'} patterns. All IDENTIFIER tokens in the import and the
+     * STRING_LITERAL module path token receive the same {@code groupId}. The module path
+     * (with quotes stripped) is stored as the {@code qualifiedName}.</p>
+     */
+    static List<ExtractedToken> assignImportGroups(List<ExtractedToken> tokens) {
+        List<ExtractedToken> result = new ArrayList<>(tokens.size());
+        int nextGroupId = 1;
+        int i = 0;
+        while (i < tokens.size()) {
+            ExtractedToken tok = tokens.get(i);
+            if (tok.kind() != KEYWORD || !"import".equals(tok.text())) {
+                result.add(tok);
+                i++;
+                continue;
+            }
+            // Collect from "import" up to and including ";"
+            int groupId = nextGroupId++;
+            // First, scan ahead to find the module path string literal (after "from")
+            String modulePath = null;
+            int endIndex = i + 1;
+            for (int k = i + 1; k < tokens.size(); k++) {
+                ExtractedToken t = tokens.get(k);
+                if (t.kind() == SEPARATOR && ";".equals(t.text())) {
+                    endIndex = k + 1;
+                    break;
+                }
+                if (t.kind() == STRING_LITERAL) {
+                    // Strip surrounding quotes to get the module path
+                    String raw = t.text();
+                    modulePath = raw.length() >= 2 ? raw.substring(1, raw.length() - 1) : raw;
+                    endIndex = k + 1; // include the string literal
+                }
+            }
+            String fqn = modulePath != null ? modulePath : "";
+            // Emit "import" keyword unchanged
+            result.add(tok);
+            for (int k = i + 1; k < endIndex; k++) {
+                ExtractedToken t = tokens.get(k);
+                if (t.kind() == IDENTIFIER || t.kind() == STRING_LITERAL) {
+                    result.add(new ExtractedToken(t.line(), t.columnStart(), t.columnEnd(),
+                            t.text(), t.kind(), fqn.isEmpty() ? null : fqn,
+                            null, t.hoverText(), groupId));
+                } else {
+                    result.add(t);
+                }
+            }
+            i = endIndex;
+        }
+        return result;
+    }
+
+    /**
      * Extracts class and method/function declarations by scanning the flat token list.
      *
      * <p>Recognised patterns:</p>
@@ -156,7 +225,7 @@ public class TypeScriptIndexer extends AbstractAntlr4Indexer {
                 continue;
             }
 
-            // ── Method declarations inside a class body ───────────────────────
+            // ── Method and property declarations inside a class body ─────────
             if (classBodyDepth >= 0 && braceDepth == classBodyDepth) {
                 // Skip over any leading modifier keywords (public, static, async, …)
                 int j = i;
@@ -172,11 +241,20 @@ public class TypeScriptIndexer extends AbstractAntlr4Indexer {
                 if (isMethodName) {
                     Token next = lookAhead(structural, j + 1);
                     if (next != null && isSeparator(next, "(")) {
+                        // Method declaration
                         String qualifiedName = currentClass != null
                                 ? fileStem + "." + currentClass + "#" + candidate.getText()
                                 : fileStem + "." + candidate.getText();
                         symbols.add(buildSymbol(fileId, SymbolKind.METHOD, candidate, qualifiedName));
                         i = j; // fast-forward past the modifiers and name
+                    } else if (next != null && (isOperator(next, ":") || isOperator(next, "=")
+                            || isOperator(next, "!") || isOperator(next, "?"))) {
+                        // Class property: name: Type or name = value or name!: Type (definite assignment)
+                        String propFqn = currentClass != null
+                                ? fileStem + "." + currentClass + "." + candidate.getText()
+                                : fileStem + "." + candidate.getText();
+                        symbols.add(buildSymbol(fileId, SymbolKind.PROPERTY, candidate, propFqn));
+                        i = j;
                     }
                 }
             }
@@ -200,6 +278,10 @@ public class TypeScriptIndexer extends AbstractAntlr4Indexer {
 
     private static boolean isSeparator(Token tok, String text) {
         return tok.getType() == TypeScriptLexer.Separator && text.equals(tok.getText());
+    }
+
+    private static boolean isOperator(Token tok, String text) {
+        return tok.getType() == TypeScriptLexer.Operator && text.equals(tok.getText());
     }
 
     private static Token lookAhead(List<Token> tokens, int index) {

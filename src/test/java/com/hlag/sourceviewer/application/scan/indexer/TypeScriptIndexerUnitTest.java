@@ -6,11 +6,13 @@ import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
+import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
 import com.hlag.sourceviewer.domain.model.source.Symbol;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 class TypeScriptIndexerUnitTest {
@@ -286,6 +288,130 @@ class TypeScriptIndexerUnitTest {
     void returns_no_pending_references() {
         var result = index("class Foo { bar() {} }");
         assertThat(result.references()).isEmpty();
+    }
+
+    // ── property extraction ───────────────────────────────────────────────────
+
+    @Test
+    void extracts_property_with_type_annotation() {
+        String src = "class Service {\n  name: string;\n}";
+        var result = index(src);
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.PROPERTY && "name".equals(s.name().value()));
+    }
+
+    @Test
+    void extracts_property_with_assignment() {
+        String src = "class Counter {\n  count = 0;\n}";
+        var result = index(src);
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.PROPERTY && "count".equals(s.name().value()));
+    }
+
+    @Test
+    void extracts_property_with_definite_assignment_assertion() {
+        String src = "class Widget {\n  id!: number;\n}";
+        var result = index(src);
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.PROPERTY && "id".equals(s.name().value()));
+    }
+
+    @Test
+    void extracts_optional_property() {
+        String src = "class Config {\n  timeout?: number;\n}";
+        var result = index(src);
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.PROPERTY && "timeout".equals(s.name().value()));
+    }
+
+    @Test
+    void extracts_property_with_access_modifier() {
+        String src = "class Model {\n  private readonly id: number;\n}";
+        var result = index(src);
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.PROPERTY && "id".equals(s.name().value()));
+    }
+
+    @Test
+    void property_qualified_name_includes_class() {
+        String src = "class MyComponent {\n  title: string;\n}";
+        var result = index(src);
+        assertThat(result.declarations())
+                .filteredOn(s -> s.kind() == SymbolKind.PROPERTY)
+                .allMatch(s -> s.qualifiedName().value().contains("MyComponent.title"));
+    }
+
+    // ── import group assignment ───────────────────────────────────────────────
+
+    @Nested
+    class AssignImportGroupsTest {
+
+        @Test
+        void default_import_assigns_group_to_identifier_and_module_path() {
+            var result = index("import Foo from 'foo-module';");
+            var grouped = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .toList();
+            assertThat(grouped).isNotEmpty();
+            assertThat(grouped).allMatch(t -> t.groupId().equals(grouped.get(0).groupId()));
+            assertThat(grouped).anyMatch(t -> t.kind() == TokenKind.IDENTIFIER && "Foo".equals(t.text()));
+            assertThat(grouped).anyMatch(t -> t.kind() == TokenKind.STRING_LITERAL);
+            assertThat(grouped).allMatch(t -> "foo-module".equals(t.qualifiedName()));
+        }
+
+        @Test
+        void named_import_assigns_same_group_to_all_identifiers_and_module_path() {
+            var result = index("import { Alpha, Beta } from 'shared';");
+            var grouped = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .toList();
+            int groupId = grouped.get(0).groupId();
+            assertThat(grouped).allMatch(t -> t.groupId() == groupId);
+            assertThat(grouped)
+                    .extracting(ExtractedToken::text)
+                    .contains("Alpha", "Beta");
+            assertThat(grouped).anyMatch(t -> t.kind() == TokenKind.STRING_LITERAL);
+        }
+
+        @Test
+        void module_path_stored_as_qualified_name_without_quotes() {
+            var result = index("import { Service } from './services/user';");
+            var grouped = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .toList();
+            assertThat(grouped).allMatch(t -> "./services/user".equals(t.qualifiedName()));
+        }
+
+        @Test
+        void two_import_statements_get_different_group_ids() {
+            var result = index("import A from 'mod-a';\nimport B from 'mod-b';");
+            var groups = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .map(ExtractedToken::groupId)
+                    .distinct()
+                    .toList();
+            assertThat(groups).hasSize(2);
+        }
+
+        @Test
+        void import_keyword_itself_does_not_get_a_group_id() {
+            var result = index("import Foo from 'mod';");
+            var importKeyword = result.tokens().stream()
+                    .filter(t -> "import".equals(t.text()) && t.kind() == TokenKind.KEYWORD)
+                    .findFirst();
+            assertThat(importKeyword).isPresent();
+            assertThat(importKeyword.get().groupId()).isNull();
+        }
+
+        @Test
+        void type_import_assigns_group_correctly() {
+            var result = index("import type { MyType } from 'types';");
+            var grouped = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .toList();
+            assertThat(grouped).isNotEmpty();
+            assertThat(grouped).anyMatch(t -> "MyType".equals(t.text()));
+        }
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

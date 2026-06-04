@@ -31,6 +31,14 @@ public interface SymbolRepository {
      */
     Optional<Symbol> findByQualifiedNameForScan(QualifiedName qualifiedName, Long scanJobId);
 
+    /**
+     * Finds the symbol declared at the given file position.
+     * Used during reference resolution to map an LSP {@code definition} response
+     * (file URI + position) back to the Symbol entity and its FQN.
+     * Prefers unpublished symbols from the current scan job.
+     */
+    Optional<Symbol> findByFileAndPositionForScan(FileIdentifier fileId, int line, int column, Long scanJobId);
+
     List<Symbol> findBySimpleName(SimpleName name);
 
     List<Symbol> findByFile(FileIdentifier fileIdentifier);

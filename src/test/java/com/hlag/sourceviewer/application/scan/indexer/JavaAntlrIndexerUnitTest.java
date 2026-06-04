@@ -13,6 +13,7 @@ import com.hlag.sourceviewer.application.scan.lsp.LanguageServerSession;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
+import com.hlag.sourceviewer.domain.model.source.ExtractedToken;
 import com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind;
 import com.hlag.sourceviewer.infrastructure.lsp.jdtls.JdtlsNotifyingLanguageClient;
 import java.nio.file.Path;
@@ -20,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.List;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
@@ -41,8 +43,8 @@ class JavaAntlrIndexerUnitTest {
     }
 
     @Test
-    void priority_is_between_maven_and_generic_java_indexers() {
-        assertThat(indexer.priority()).isEqualTo(50);
+    void priority_is_100() {
+        assertThat(indexer.priority()).isEqualTo(100);
     }
 
     @Test
@@ -134,6 +136,165 @@ class JavaAntlrIndexerUnitTest {
     void returns_no_pending_references() {
         ParsedFile result = index("class Foo { void bar() { } }");
         assertThat(result.references()).isEmpty();
+    }
+
+    // ── field extraction ──────────────────────────────────────────────────────
+
+    @Test
+    void extracts_simple_field_with_terminating_semicolon() {
+        String source = """
+                package com.example;
+                public class Holder {
+                    String value;
+                }
+                """;
+        ParsedFile result = index(source);
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.FIELD && "value".equals(s.name().value()));
+    }
+
+    @Test
+    void extracts_field_with_initializer() {
+        String source = """
+                package com.example;
+                public class Counter {
+                    private String name = "default";
+                }
+                """;
+        ParsedFile result = index(source);
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.FIELD && "name".equals(s.name().value()));
+    }
+
+    @Test
+    void field_qualified_name_includes_class_and_package() {
+        String source = """
+                package com.example;
+                public class Entity {
+                    String id;
+                }
+                """;
+        ParsedFile result = index(source);
+        assertThat(result.declarations())
+                .filteredOn(s -> s.kind() == SymbolKind.FIELD)
+                .allMatch(s -> s.qualifiedName().value().contains("Entity.id"));
+    }
+
+    // ── parameter extraction ──────────────────────────────────────────────────
+
+    @Test
+    void extracts_parameters_from_method() {
+        String source = """
+                package com.example;
+                public class Greeter {
+                    public String greet(String name, int times) {
+                        return name;
+                    }
+                }
+                """;
+        ParsedFile result = index(source);
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.PARAMETER && "name".equals(s.name().value()));
+    }
+
+    @Test
+    void extracts_constructor_parameters() {
+        String source = """
+                package com.example;
+                public class Person {
+                    public Person(String firstName, String lastName) {}
+                }
+                """;
+        ParsedFile result = index(source);
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.PARAMETER && "firstName".equals(s.name().value()));
+        assertThat(result.declarations())
+                .anyMatch(s -> s.kind() == SymbolKind.PARAMETER && "lastName".equals(s.name().value()));
+    }
+
+    @Test
+    void parameter_qualified_name_includes_method() {
+        String source = """
+                package com.example;
+                public class Service {
+                    public void process(String input) {}
+                }
+                """;
+        ParsedFile result = index(source);
+        assertThat(result.declarations())
+                .filteredOn(s -> s.kind() == SymbolKind.PARAMETER)
+                .allMatch(s -> s.qualifiedName().value().contains("process.input"));
+    }
+
+    // ── import group assignment ───────────────────────────────────────────────
+
+    @Nested
+    class AssignImportGroupsTest {
+
+        @Test
+        void simple_import_assigns_group_to_all_identifier_and_dot_tokens() {
+            ParsedFile result = index("import com.example.Foo;");
+            var grouped = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .toList();
+            assertThat(grouped).isNotEmpty();
+            assertThat(grouped)
+                    .extracting(ExtractedToken::text)
+                    .contains("com", "example", "Foo");
+            assertThat(grouped).allMatch(t -> t.groupId().equals(grouped.get(0).groupId()));
+        }
+
+        @Test
+        void import_fqn_stored_as_qualified_name() {
+            ParsedFile result = index("import com.example.Foo;");
+            var grouped = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .toList();
+            assertThat(grouped).allMatch(t -> "com.example.Foo".equals(t.qualifiedName()));
+        }
+
+        @Test
+        void wildcard_import_includes_asterisk_in_group() {
+            ParsedFile result = index("import com.example.*;");
+            var grouped = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .toList();
+            assertThat(grouped)
+                    .extracting(ExtractedToken::text)
+                    .contains("com", "example", "*");
+        }
+
+        @Test
+        void static_import_assigns_group() {
+            ParsedFile result = index("import static com.example.Util.helper;");
+            var grouped = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .toList();
+            assertThat(grouped)
+                    .extracting(ExtractedToken::text)
+                    .contains("com", "example", "Util", "helper");
+        }
+
+        @Test
+        void two_imports_get_different_group_ids() {
+            ParsedFile result = index("import com.example.Foo;\nimport com.example.Bar;");
+            var groups = result.tokens().stream()
+                    .filter(t -> t.groupId() != null)
+                    .map(ExtractedToken::groupId)
+                    .distinct()
+                    .toList();
+            assertThat(groups).hasSize(2);
+        }
+
+        @Test
+        void import_keyword_does_not_get_a_group_id() {
+            ParsedFile result = index("import com.example.Foo;");
+            var importKeyword = result.tokens().stream()
+                    .filter(t -> "import".equals(t.text()) && t.kind() == TokenKind.KEYWORD)
+                    .findFirst();
+            assertThat(importKeyword).isPresent();
+            assertThat(importKeyword.get().groupId()).isNull();
+        }
     }
 
 //    @Test

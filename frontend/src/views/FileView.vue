@@ -41,7 +41,14 @@
                 <span
                   v-for="(token, ti) in line.tokens"
                   :key="ti"
-                  :class="[tokenColorClass(token.k), isTokenClickable(token) ? 'cursor-pointer hover:underline hover:text-indigo-600' : '', isSelectedToken(token) ? 'bg-yellow-200 rounded outline outline-1 outline-yellow-400' : '']"
+                  :class="[
+                    tokenColorClass(token.k),
+                    isTokenClickable(token) ? 'cursor-pointer' : '',
+                    isGroupHovered(token) ? 'underline text-indigo-600' : (isTokenClickable(token) ? 'hover:underline hover:text-indigo-600' : ''),
+                    isSelectedToken(token) ? 'bg-yellow-200 rounded outline outline-1 outline-yellow-400' : '',
+                  ]"
+                  @mouseenter="token.g != null ? hoveredGroup = token.g : undefined"
+                  @mouseleave="token.g != null ? hoveredGroup = null : undefined"
                   @click="isTokenClickable(token) ? selectToken(token) : undefined"
                 >{{ token.t }}</span>
               </td>
@@ -277,6 +284,7 @@ const references = ref<SymbolReference[]>([])
 const referencesLoading = ref(false)
 const referencesError = ref('')
 const javadocProviders = ref<JavadocProvider[]>([])
+const hoveredGroup = ref<number | null>(null)
 
 // ── Data loading ─────────────────────────────────────────────────────
 
@@ -400,7 +408,11 @@ function tokenColorClass(kind: TokenKind): string {
 }
 
 function isTokenClickable(token: Token): boolean {
-  return token.k === 'IDENTIFIER'
+  return token.k === 'IDENTIFIER' && (token.s != null || token.q != null)
+}
+
+function isGroupHovered(token: Token): boolean {
+  return token.g != null && token.g === hoveredGroup.value
 }
 
 function isSelectedToken(token: Token): boolean {

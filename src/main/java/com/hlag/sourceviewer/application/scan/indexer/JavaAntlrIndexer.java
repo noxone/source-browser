@@ -1,6 +1,10 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
+import static java.util.Optional.of;
+import static java.util.Optional.ofNullable;import static java.util.Optional.empty;
+
 import com.hlag.sourceviewer.application.scan.ParsedFile;
+import com.hlag.sourceviewer.application.scan.PendingReference;
 import com.hlag.sourceviewer.application.scan.antlr.JavaLexer;
 import com.hlag.sourceviewer.application.scan.lsp.DiagnosticsCapable;
 import com.hlag.sourceviewer.application.scan.lsp.LanguageServerSession;
@@ -11,6 +15,7 @@ import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
 import com.hlag.sourceviewer.domain.model.identifier.LineNumber;
 import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
+import com.hlag.sourceviewer.domain.model.identifier.ReferenceKind;
 import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
 import com.hlag.sourceviewer.domain.model.repository.Repository;
@@ -21,27 +26,30 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.Token;
-import org.eclipse.lsp4j.DidCloseTextDocumentParams;
-import org.eclipse.lsp4j.DidOpenTextDocumentParams;
-import org.eclipse.lsp4j.Hover;
-import org.eclipse.lsp4j.HoverParams;
-import org.eclipse.lsp4j.MarkupContent;
-import org.eclipse.lsp4j.Position;
-import org.eclipse.lsp4j.TextDocumentIdentifier;
-import org.eclipse.lsp4j.TextDocumentItem;
+import org.eclipse.lsp4j.*;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,6 +73,11 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
     private static final int CLASS_BODY_UNKNOWN = -1;
     private static final int HOVER_REQUEST_TIMEOUT_SECONDS = 5;
+    private static final int DOCUMENT_SYMBOL_TIMEOUT_SECONDS = 15;
+    private static final int DEFINITION_REQUEST_TIMEOUT_SECONDS = 5;
+
+    private static final Pattern PACKAGE_PATTERN =
+            Pattern.compile("^\\s*package\\s+([\\w.]+)\\s*;", Pattern.MULTILINE);
 
     private static final Set<String> TYPE_KEYWORDS = Set.of("class", "interface", "enum", "record");
     private static final Set<String> MEMBER_MODIFIERS = Set.of(
@@ -178,19 +191,60 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     }
 
     /**
-     * Indexes the file via ANTLR tokenisation and, when a JDTLS session is available,
-     * additionally queries the language server for hover details on every token and
-     * writes the results to the log.
+     * Indexes the file via ANTLR tokenisation plus (when JDTLS is available) LSP-based
+     * symbol extraction, reference resolution, and hover enrichment.
+     *
+     * <p>All three LSP queries ({@code documentSymbol}, {@code definition}, {@code hover})
+     * share one {@code didOpen}/{@code didClose} window to avoid repeated round-trips.</p>
      */
     @Override
     public ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context) {
-        ParsedFile parsedFile = super.indexFile(fileId, path, content, context);
+        // Phase 1: ANTLR tokenization + ANTLR-based symbol/import extraction (always)
+        final var initialParsedFile = super.indexFile(fileId, path, content, context);
+        // Phase 1b: assign import group IDs in the token stream
+        final var groupedParsedFile = initialParsedFile.withTokens(assignImportGroups(initialParsedFile.tokens()));
 
-        if (context instanceof JavaAntlrIndexingContext ctx && ctx.session().isPresent()) {
-            parsedFile = enrichWithHover(path, content, parsedFile, ctx.session().get());
+        if (!(context instanceof JavaAntlrIndexingContext ctx) || ctx.session().isEmpty()) {
+            return groupedParsedFile;
         }
 
-        return parsedFile;
+        final var session = ctx.session().get();
+        final var fileUri = resolveFileUri(session.projectRoot(), path);
+        return withDocument(session, fileUri, "java", content, 10, () ->
+                extractInformationFromDocument(session, ctx, groupedParsedFile, fileId, fileUri, content));
+    }
+
+    private ParsedFile extractInformationFromDocument(
+            final LanguageServerSession<? extends DiagnosticsCapable> session,
+            final JavaAntlrIndexingContext indexingContext,
+            final ParsedFile parsedFile,
+            final FileIdentifier fileId,
+            final String fileUri,
+            final String content
+    ) {
+        final var filename = Path.of(URI.create(fileUri)).getFileName().toString();
+
+        // Phase 2a: LSP-based symbol extraction (replaces ANTLR symbols if non-empty)
+        final var packagePrefix = extractPackagePrefix(content);
+        List<Symbol> lspSymbols = extractSymbolsViaDocumentSymbol(fileId, fileUri, packagePrefix, session);
+        List<Symbol> symbols = lspSymbols.isEmpty() ? parsedFile.declarations() : lspSymbols;
+        logger.debug("[JDTLS] {}: {} symbols via documentSymbol (fallback={})",
+                filename, symbols.size(), lspSymbols.isEmpty());
+
+        // Phase 2b: LSP-based reference resolution via textDocument/definition
+        Set<String> declarationPositions = symbols.stream()
+                .filter(s -> s.lineStart().isPresent() && s.columnStart().isPresent())
+                .map(s -> s.lineStart().get().value() + ":" + s.columnStart().get().value())
+                .collect(Collectors.toSet());
+        List<PendingReference> references = resolveReferencesViaDefinition(
+                fileUri, parsedFile.tokens(), declarationPositions, session, indexingContext.repoRoot());
+        logger.debug("[JDTLS] {}: {} references resolved via definition", filename, references.size());
+
+        // Phase 2c: hover enrichment (existing)
+        //List<ExtractedToken> enrichedTokens = enrichTokensWithHover(fileUri, parsedFile.tokens(), session, filename);
+        var enrichedTokens = parsedFile.tokens();
+
+        return new ParsedFile(symbols, references, enrichedTokens);
     }
 
     /** Closes the JDTLS session held by the context (if any). */
@@ -202,59 +256,354 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         }
     }
 
-    // -- LSP hover queries -----------------------------------------------------
+    // -- LSP symbol extraction (documentSymbol) --------------------------------
 
-    private ParsedFile enrichWithHover(FilePath path, String content, ParsedFile parsedFile,
-                                       LanguageServerSession<? extends DiagnosticsCapable> session) {
-        final var fileUri = resolveFileUri(session.projectRoot(), path);
-        openDocument(session, fileUri, content);
+    private List<Symbol> extractSymbolsViaDocumentSymbol(FileIdentifier fileId, String fileUri,
+                                                         String proposedPackagePrefix,
+                                                         LanguageServerSession<?> session) {
         try {
-            session.languageClient().awaitDiagnostics(fileUri, 5, TimeUnit.SECONDS);
-
-            int queried = 0;
-            int withContent = 0;
-            int emptyOrNull = 0;
-            int failed = 0;
-            List<ExtractedToken> enriched = new ArrayList<>(parsedFile.tokens().size());
-
-            for (ExtractedToken token : parsedFile.tokens()) {
-                if (token.kind() != IDENTIFIER) {
-                    enriched.add(token);
-                    continue;
-                }
-                queried++;
-                // LSP positions are 0-based; ANTLR lines are 1-based, columns are 0-based
-                Position position = new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
-                HoverParams params = new HoverParams(new TextDocumentIdentifier(fileUri), position);
-                try {
-                    Hover hover = session.textDocumentService().hover(params)
-                            .get(HOVER_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                    String hoverText = hover != null && hover.getContents() != null
-                            ? formatHoverContents(hover) : null;
-                    if (hoverText != null && !hoverText.isBlank()) {
-                        withContent++;
-                        enriched.add(new ExtractedToken(token.line(), token.columnStart(), token.columnEnd(),
-                                token.text(), token.kind(), token.qualifiedName(), token.symbolId(), hoverText));
+            DocumentSymbolParams params = new DocumentSymbolParams(new TextDocumentIdentifier(fileUri));
+            List<Either<SymbolInformation, DocumentSymbol>> result = session.textDocumentService()
+                    .documentSymbol(params)
+                    .get(DOCUMENT_SYMBOL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (result == null || result.isEmpty()) {
+                return List.of();
+            }
+            List<Symbol> symbols = new ArrayList<>();
+            // TODO: _IF_ we receive "left", there is more action needed. But with all capabilities enabled, JDTLS should always answer with "right"
+            final var allRight = result.stream().allMatch(Either::isRight);
+            if (!allRight) {
+                // TODO: need better handling if not all eithers are "right"
+                for (Either<SymbolInformation, DocumentSymbol> either : result) {
+                    if (either.isRight()) {
+                        flattenDocumentSymbol(fileId, either.getRight(), proposedPackagePrefix, symbols);
                     } else {
-                        emptyOrNull++;
-                        enriched.add(token);
+                        logger.warn("Received 'left' for DocumentSymbolParams.");
+                        symbolFromSymbolInformation(fileId, either.getLeft(), proposedPackagePrefix).ifPresent(symbols::add);
                     }
-                } catch (Exception e) {
-                    failed++;
-                    logger.trace("[JDTLS] hover failed for token '{}' at {}:{}: {}",
-                            token.text(), token.line(), token.columnStart(), e.getMessage());
-                    enriched.add(token);
+                }
+            } else {
+                final var packagePrefix = result.stream()
+                        .map(Either::getRight)
+                        .filter(ds -> ds.getKind() == org.eclipse.lsp4j.SymbolKind.Package)
+                        .findFirst()
+                        .map(DocumentSymbol::getName)
+                        .orElse("");
+                result.stream()
+                        .map(Either::getRight)
+                        .filter(ds -> ds.getKind() != org.eclipse.lsp4j.SymbolKind.Package)
+                        .forEach(documentSymbol ->
+                                flattenDocumentSymbol(fileId, documentSymbol, packagePrefix, symbols));
+            }
+            return symbols;
+        } catch (Exception e) {
+            logger.debug("[JDTLS] documentSymbol failed for {}: {}", fileUri, e.getMessage());
+            return List.of();
+        }
+    }
+
+    private void flattenDocumentSymbol(FileIdentifier fileId, DocumentSymbol documentSymbol,
+                                       String parentFullQualifiedName, List<Symbol> out) {
+        org.eclipse.lsp4j.SymbolKind lspKind = documentSymbol.getKind();
+        SymbolKind kind = mapLspSymbolKind(lspKind);
+        String languageKind = lspKind != null ? lspKind.name().toLowerCase(Locale.ROOT) : null;
+
+        String fullQualifiedName = parentFullQualifiedName.isEmpty()
+                ? documentSymbol.getName()
+                : parentFullQualifiedName + "." + documentSymbol.getName();
+
+        var selRange  = documentSymbol.getSelectionRange();
+        var fullRange = documentSymbol.getRange();
+        int lineStart  = selRange  != null ? selRange.getStart().getLine() + 1              : 0;
+        int colStart   = selRange  != null ? selRange.getStart().getCharacter() + 1         : 0;
+        int colEnd     = selRange  != null ? selRange.getEnd().getCharacter()               : 0;
+        int lineEnd    = fullRange != null ? fullRange.getEnd().getLine() + 1               : 0;
+
+        Symbol s = new Symbol(
+                fileId, kind,
+                new SimpleName(documentSymbol.getName()),
+                new QualifiedName(fullQualifiedName),
+                ofNullable(documentSymbol.getDetail()).filter(d -> !d.isBlank()).map(SimpleName::new),
+                lineStart > 0  ? Optional.of(new LineNumber(lineStart))   : Optional.empty(),
+                lineEnd   > 0  ? Optional.of(new LineNumber(lineEnd))     : Optional.empty(),
+                colStart  > 0  ? Optional.of(new ColumnNumber(colStart))  : Optional.empty(),
+                colEnd    > 0  ? Optional.of(new ColumnNumber(colEnd))    : Optional.empty(),
+                ofNullable(languageKind),
+                List.of());
+        out.add(s);
+
+        if (documentSymbol.getChildren() != null) {
+            for (DocumentSymbol child : documentSymbol.getChildren()) {
+                flattenDocumentSymbol(fileId, child, fullQualifiedName, out);
+            }
+        }
+    }
+
+    private Optional<Symbol> symbolFromSymbolInformation(FileIdentifier fileId,
+                                                          SymbolInformation info,
+                                                          String packagePrefix) {
+        if (info == null || info.getName() == null) {
+            return empty();
+        }
+        // TODO: this fqn might be wrong
+        final var fullQualifiedName = new QualifiedName(packagePrefix + getContainer(info) + info.getName());
+        final var kind = mapLspSymbolKind(info.getKind());
+        final var languageKind = info.getKind() != null ? info.getKind().name().toLowerCase(Locale.ROOT) : null;
+        final var loc = info.getLocation();
+        final var startLine = loc != null ? loc.getRange().getStart().getLine() + 1 : 0;
+        final var startCol  = loc != null ? loc.getRange().getStart().getCharacter() + 1 : 0;
+        final var endLine = loc != null ? loc.getRange().getEnd().getLine() + 1 : 0;
+        final var endCol  = loc != null ? loc.getRange().getEnd().getCharacter() + 1 : 0;
+        return of(new Symbol(
+                fileId,
+                kind,
+                new SimpleName(info.getName()),
+                fullQualifiedName,
+                empty(),
+                startLine > 0 ? of(new LineNumber(startLine)) : empty(),
+                endLine > 0 ? of(new LineNumber(endLine)) : empty(),
+                startCol  > 0 ? of(new ColumnNumber(startCol)) : empty(),
+                endCol > 0 ? of(new ColumnNumber(endCol)) : empty(),
+                ofNullable(languageKind),
+                List.of()));
+    }
+
+    private String getContainer(SymbolInformation info) {
+        if (info == null) {
+            return "";
+        }
+        if (info.getContainerName() == null || info.getContainerName().isBlank()) {
+            return "";
+        }
+        return info.getContainerName() + ".";
+    }
+
+    private static SymbolKind mapLspSymbolKind(org.eclipse.lsp4j.SymbolKind lspKind) {
+        if (lspKind == null) return SymbolKind.CLASS;
+        return switch (lspKind) {
+            case Class, Struct -> SymbolKind.CLASS;
+            case Interface -> SymbolKind.INTERFACE;
+            case Enum     -> SymbolKind.ENUM;
+            case EnumMember -> SymbolKind.ENUM_CONSTANT;
+            case Method   -> SymbolKind.METHOD;
+            case Constructor -> SymbolKind.CONSTRUCTOR;
+            case Field    -> SymbolKind.FIELD;
+            case Property -> SymbolKind.PROPERTY;
+            case Variable -> SymbolKind.LOCAL_VARIABLE;
+            case Function -> SymbolKind.FUNCTION;
+            case File -> null;
+            case Module   -> SymbolKind.MODULE;
+            case Namespace -> SymbolKind.NAMESPACE;
+            case TypeParameter -> SymbolKind.TYPE_ALIAS;
+            case Constant ->  SymbolKind.CONSTANT;
+            default       -> {
+                logger.warn("Unknown symbol kind: {}", lspKind);
+                yield SymbolKind.VARIABLE;
+            } // TODO: Map ALL lspKinds here
+        };
+    }
+
+    // -- LSP reference resolution (definition) ---------------------------------
+
+    private List<PendingReference> resolveReferencesViaDefinition(
+            String fileUri,
+            List<ExtractedToken> tokens,
+            Set<String> declarationPositions,
+            LanguageServerSession<?> session,
+            Path repoRoot) {
+        List<PendingReference> references = new ArrayList<>();
+        for (ExtractedToken token : tokens) {
+            if (token.kind() != IDENTIFIER) {
+                continue;
+            }
+            String posKey = token.line() + ":" + token.columnStart();
+            if (declarationPositions.contains(posKey)) {
+                continue; // this is a declaration, not a reference
+            }
+            Position position = new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
+            DefinitionParams params = new DefinitionParams(new TextDocumentIdentifier(fileUri), position);
+            try {
+                // definition() returns Either<List<Location>, List<LocationLink>>
+                var result = session.textDocumentService()
+                        .definition(params)
+                        .get(DEFINITION_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                if (result == null) continue;
+                Location loc = extractFirstLocation(result);
+                if (loc == null) continue;
+                // Only create a reference if the definition is within the repository
+                Optional<FilePath> defPath = uriToRepoRelativePath(loc.getUri(), repoRoot);
+                if (defPath.isEmpty()) continue;
+                int defLine = loc.getRange().getStart().getLine() + 1;
+                int defCol  = loc.getRange().getStart().getCharacter() + 1;
+                references.add(new PendingReference(
+                        Optional.empty(),
+                        Optional.of(new SimpleName(token.text())),
+                        ReferenceKind.TYPE_USE,
+                        Optional.of(new LineNumber(token.line())),
+                        Optional.of(new ColumnNumber(token.columnStart())),
+                        defPath,
+                        Optional.of(new LineNumber(defLine)),
+                        Optional.of(new ColumnNumber(defCol))));
+            } catch (Exception e) {
+                logger.trace("[JDTLS] definition failed for token '{}' at {}:{}: {}",
+                        token.text(), token.line(), token.columnStart(), e.getMessage());
+            }
+        }
+        return references;
+    }
+
+    private static Location extractFirstLocation(Object result) {
+        if (result instanceof Either<?,?> either) {
+            if (either.isLeft()) {
+                Object left = either.getLeft();
+                if (left instanceof List<?> list && !list.isEmpty() && list.getFirst() instanceof Location loc) {
+                    return loc;
+                }
+            } else {
+                Object right = either.getRight();
+                if (right instanceof List<?> list && !list.isEmpty()) {
+                    Object first = list.getFirst();
+                    if (first instanceof Location loc) return loc;
+                    if (first instanceof LocationLink link) {
+                        Location l = new Location();
+                        l.setUri(link.getTargetUri());
+                        l.setRange(link.getTargetSelectionRange());
+                        return l;
+                    }
                 }
             }
-
-            String filename = Path.of(java.net.URI.create(fileUri)).getFileName().toString();
-            logger.debug("[JDTLS] {}: {} identifiers queried, {} with hover, {} empty/null, {} failed",
-                    filename, queried, withContent, emptyOrNull, failed);
-
-            return new ParsedFile(parsedFile.declarations(), parsedFile.references(), enriched);
-        } finally {
-            closeDocument(session, fileUri);
         }
+        if (result instanceof List<?> list && !list.isEmpty() && list.getFirst() instanceof Location loc) {
+            return loc;
+        }
+        return null;
+    }
+
+    private static Optional<FilePath> uriToRepoRelativePath(String uri, Path repoRoot) {
+        if (uri == null) return Optional.empty();
+        try {
+            Path target = Path.of(URI.create(uri)).toAbsolutePath();
+            Path root   = repoRoot.toAbsolutePath().toRealPath();
+            if (!target.startsWith(root)) return Optional.empty();
+            return Optional.of(new FilePath(root.relativize(target).toString()));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    // -- LSP hover enrichment --------------------------------------------------
+
+    private List<ExtractedToken> enrichTokensWithHover(String fileUri, List<ExtractedToken> tokens,
+                                                        LanguageServerSession<?> session,
+                                                        String filename) {
+        int queried = 0, withContent = 0, emptyOrNull = 0, failed = 0;
+        List<ExtractedToken> enriched = new ArrayList<>(tokens.size());
+        for (ExtractedToken token : tokens) {
+            if (token.kind() != IDENTIFIER) {
+                enriched.add(token);
+                continue;
+            }
+            queried++;
+            // LSP positions are 0-based; ANTLR lines are 1-based, columns are 0-based
+            Position position = new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
+            HoverParams params = new HoverParams(new TextDocumentIdentifier(fileUri), position);
+            try {
+                Hover hover = session.textDocumentService().hover(params)
+                        .get(HOVER_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                String hoverText = hover != null && hover.getContents() != null
+                        ? formatHoverContents(hover) : null;
+                if (hoverText != null && !hoverText.isBlank()) {
+                    withContent++;
+                    enriched.add(new ExtractedToken(token.line(), token.columnStart(), token.columnEnd(),
+                            token.text(), token.kind(), token.qualifiedName(), token.symbolId(),
+                            hoverText, token.groupId()));
+                } else {
+                    emptyOrNull++;
+                    enriched.add(token);
+                }
+            } catch (Exception e) {
+                failed++;
+                logger.trace("[JDTLS] hover failed for token '{}' at {}:{}: {}",
+                        token.text(), token.line(), token.columnStart(), e.getMessage());
+                enriched.add(token);
+            }
+        }
+        logger.debug("[JDTLS] {}: {} identifiers queried, {} with hover, {} empty/null, {} failed",
+                filename, queried, withContent, emptyOrNull, failed);
+        return enriched;
+    }
+
+    // -- Import group assignment -----------------------------------------------
+
+    /**
+     * Walks the token list and assigns a shared {@code groupId} to all tokens that
+     * belong to the same {@code import} statement. All tokens in the group also receive
+     * the full import FQN as their {@code qualifiedName} so the frontend can treat them
+     * as a single navigable link.
+     */
+    static List<ExtractedToken> assignImportGroups(List<ExtractedToken> tokens) {
+        List<ExtractedToken> result = new ArrayList<>(tokens.size());
+        int nextGroupId = 1;
+        int currentIndex = 0;
+        while (currentIndex < tokens.size()) {
+            final var token = tokens.get(currentIndex);
+            result.add(token);
+            ++currentIndex;
+            // Detect: KEYWORD "import" followed by identifiers and dots until ";"
+            if (token.is(KEYWORD, "import")) {
+                // Collect all tokens from the KEYWORD through the terminating SEPARATOR(";")
+                int groupId = nextGroupId++;
+                int indexWithinImport = currentIndex;
+                // Skip optional whitespace and "static" keyword for static imports
+                while (indexWithinImport < tokens.size() && tokens.get(indexWithinImport).is(WHITESPACE)) {
+                    result.add(tokens.get(indexWithinImport));
+                    ++indexWithinImport;
+                }
+                if (indexWithinImport < tokens.size() && tokens.get(indexWithinImport).is(KEYWORD, "static")) {
+                    result.add(tokens.get(indexWithinImport));
+                    ++indexWithinImport; // skip "static"
+                }
+                while (indexWithinImport < tokens.size() && tokens.get(indexWithinImport).is(WHITESPACE)) {
+                    result.add(tokens.get(indexWithinImport));
+                    ++indexWithinImport;
+                }
+                final var fqnBuilder = new StringBuilder();
+                final var startIndex = indexWithinImport;
+                var endIndex = indexWithinImport; // exclusive end of import group (after ";")
+                while (indexWithinImport < tokens.size()) {
+                    final var importToken = tokens.get(indexWithinImport);
+                    if (importToken.is(WHITESPACE)) { ++indexWithinImport; continue; } // skip whitespace
+                    if (importToken.is(IDENTIFIER)) {
+                        fqnBuilder.append(importToken.text());
+                        ++indexWithinImport;
+                    } else if (importToken.is(SEPARATOR, ".")) {
+                        fqnBuilder.append('.');
+                        ++indexWithinImport;
+                    } else if (importToken.is(SEPARATOR, ";")) {
+                        endIndex = indexWithinImport + 1;
+                        break;
+                    } else if (importToken.is(OPERATOR, "*")) {
+                        fqnBuilder.append('*');
+                        ++indexWithinImport;
+                    } else {
+                        endIndex = indexWithinImport;
+                        break;
+                    }
+                }
+                final var fqn = fqnBuilder.toString();
+                // Emit tokens from startIndex to endIndex with groupId+fqn
+                tokens.subList(startIndex, endIndex).forEach(importToken ->
+                    result.add(importToken.withQualifiedName(fqn).withGroupId(groupId))
+                );
+                currentIndex = endIndex;
+            }
+        }
+        return result;
+    }
+
+    private static String extractPackagePrefix(String content) {
+        Matcher m = PACKAGE_PATTERN.matcher(content);
+        return m.find() ? m.group(1) + "." : "";
     }
 
     private static String resolveFileUri(Path repoRoot, FilePath path) {
@@ -266,18 +615,6 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         } catch (IOException e) {
             return resolved.toAbsolutePath().toUri().toString();
         }
-    }
-
-    private static void openDocument(LanguageServerSession<? extends DiagnosticsCapable> session, String fileUri, String content) {
-        // Register latch before didOpen — JDTLS may publish diagnostics immediately
-        session.languageClient().waitForDiagnostics(fileUri);
-        TextDocumentItem item = new TextDocumentItem(fileUri, "java", 1, content);
-        session.textDocumentService().didOpen(new DidOpenTextDocumentParams(item));
-    }
-
-    private static void closeDocument(LanguageServerSession<?> session, String fileUri) {
-        session.textDocumentService().didClose(
-                new DidCloseTextDocumentParams(new TextDocumentIdentifier(fileUri)));
     }
 
     private static String formatHoverContents(Hover hover) {
@@ -298,7 +635,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             addPart(parts, markupContent.getValue());
             return;
         }
-        if (value instanceof org.eclipse.lsp4j.MarkedString markedString) {
+        if (value instanceof MarkedString markedString) {
             addPart(parts, markedString.getValue());
             return;
         }
@@ -466,6 +803,15 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                     if (afterName != null && isSeparator(afterName, "(")) {
                         nameTok = maybeName;
                         nameIndex = memberStart + 1;
+                    } else if (afterName != null
+                            && (isSeparator(afterName, ";") || isOperator(afterName, "=")
+                                    || isSeparator(afterName, ",") || isSeparator(afterName, ")"))) {
+                        // Field declaration: TypeName fieldName (;|=|,|))
+                        String fieldFqn = buildQualifiedMemberName(packagePrefix, typeStack, maybeName.getText());
+                        List<String> modifiers = readModifiers(structural, i, memberStart);
+                        symbols.add(buildSymbol(fileId, SymbolKind.FIELD, maybeName, fieldFqn, Optional.empty(), modifiers));
+                        i = memberStart + 1;
+                        continue;
                     } else {
                         continue;
                     }
@@ -496,10 +842,77 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                 String signature = buildSimpleSignature(nameTok.getText(), structural, openParenIndex, closeParenIndex);
                 List<String> modifiers = readModifiers(structural, i, memberStart);
                 symbols.add(buildSymbol(fileId, kind, nameTok, qualifiedName, Optional.of(signature), modifiers));
+
+                // Extract parameters for this method/constructor
+                extractParameters(fileId, structural, openParenIndex, closeParenIndex,
+                        qualifiedName, symbols);
                 i = closeParenIndex;
             }
         }
         return symbols;
+    }
+
+    /**
+     * Extracts PARAMETER symbols from the parameter list of a method or constructor.
+     *
+     * @param methodFqn the FQN of the enclosing method (parameters are named
+     *                  {@code methodFqn.paramName})
+     */
+    private static void extractParameters(FileIdentifier fileId, List<Token> structural,
+                                          int openParen, int closeParen,
+                                          String methodFqn, List<Symbol> out) {
+        // Scan from openParen+1 to closeParen looking for "TypeName paramName" pairs.
+        // We skip generics/arrays as best-effort; final/annotation modifiers skipped too.
+        int i = openParen + 1;
+        while (i < closeParen) {
+            // Skip annotations
+            if (isSeparator(structural.get(i), "@")) {
+                i = skipAnnotation(structural, i) + 1;
+                continue;
+            }
+            // Skip final keyword
+            if (structural.get(i).getType() == JavaLexer.Keyword
+                    && "final".equals(structural.get(i).getText())) {
+                i++;
+                continue;
+            }
+            // Skip generic type bounds, arrays: <, >, [, ]
+            String txt = structural.get(i).getText();
+            if ("<".equals(txt) || ">".equals(txt) || "[".equals(txt) || "]".equals(txt)) {
+                i++;
+                continue;
+            }
+            // Expect TypeName paramName
+            if (!isIdentifier(structural.get(i))) { i++; continue; }
+            Token typeTok = structural.get(i);
+            // Advance past qualified type (e.g. java.util.List)
+            int j = i + 1;
+            while (j < closeParen && isSeparator(structural.get(j), ".")) {
+                j += 2; // skip "." and next identifier
+            }
+            // Skip vararg "..."
+            if (j < closeParen && structural.get(j).getType() == JavaLexer.Operator
+                    && "...".equals(structural.get(j).getText())) {
+                j++;
+            }
+            // Skip array brackets
+            while (j < closeParen && (isSeparator(structural.get(j), "[") || isSeparator(structural.get(j), "]"))) {
+                j++;
+            }
+            if (j < closeParen && isIdentifier(structural.get(j))) {
+                Token paramTok = structural.get(j);
+                String paramFqn = methodFqn + "." + paramTok.getText();
+                out.add(buildSymbol(fileId, SymbolKind.PARAMETER, paramTok, paramFqn,
+                        Optional.empty(), List.of()));
+                i = j + 1;
+            } else {
+                i = j + 1;
+            }
+            // Skip comma
+            if (i < closeParen && isSeparator(structural.get(i), ",")) {
+                i++;
+            }
+        }
     }
 
     private static Symbol buildSymbol(FileIdentifier fileId, SymbolKind kind, Token tok, String qualifiedName,
@@ -657,6 +1070,10 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
     private static boolean isSeparator(Token tok, String text) {
         return tok.getType() == JavaLexer.Separator && text.equals(tok.getText());
+    }
+
+    private static boolean isOperator(Token tok, String text) {
+        return tok.getType() == JavaLexer.Operator && text.equals(tok.getText());
     }
 
     private static Token lookAhead(List<Token> tokens, int index) {

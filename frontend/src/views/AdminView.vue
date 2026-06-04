@@ -80,15 +80,15 @@
     </div>
 
     <!-- Repository table -->
-    <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div v-else class="rounded-xl border border-gray-200 bg-white shadow-sm">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider rounded-tl-xl">Name</th>
             <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Remote URL</th>
             <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Branch</th>
             <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Scanned</th>
-            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider rounded-tr-xl">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
@@ -202,7 +202,7 @@
           </tr>
         </tbody>
       </table>
-      <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+      <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400 rounded-b-xl">
         {{ repositories.length }} {{ repositories.length === 1 ? 'repository' : 'repositories' }}
       </div>
     </div>
@@ -263,15 +263,15 @@
     </div>
 
     <!-- Groups table -->
-    <div v-else class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+    <div v-else class="rounded-xl border border-gray-200 bg-white shadow-sm">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+            <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider rounded-tl-xl">Name</th>
             <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Provider</th>
             <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Group Path</th>
             <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Options</th>
-            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+            <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider rounded-tr-xl">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
@@ -433,7 +433,7 @@
           </tr>
         </tbody>
       </table>
-      <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+      <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400 rounded-b-xl">
         {{ groups.length }} {{ groups.length === 1 ? 'group' : 'groups' }}
       </div>
     </div>

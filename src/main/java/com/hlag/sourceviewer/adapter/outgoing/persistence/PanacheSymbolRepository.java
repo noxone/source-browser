@@ -39,6 +39,22 @@ public class PanacheSymbolRepository
     }
 
     @Override
+    public Optional<Symbol> findByFileAndPositionForScan(FileIdentifier fileId, int line, int column, Long scanJobId) {
+        Optional<Symbol> unpublished = find(
+                "fileIdentifier = ?1 AND lineStart = ?2 AND columnStart = ?3 AND published = false AND scanJobId = ?4",
+                fileId, new com.hlag.sourceviewer.domain.model.identifier.LineNumber(line),
+                new com.hlag.sourceviewer.domain.model.identifier.ColumnNumber(column), scanJobId)
+                .firstResultOptional();
+        if (unpublished.isPresent()) {
+            return unpublished;
+        }
+        return find("fileIdentifier = ?1 AND lineStart = ?2 AND columnStart = ?3 AND published = true",
+                fileId, new com.hlag.sourceviewer.domain.model.identifier.LineNumber(line),
+                new com.hlag.sourceviewer.domain.model.identifier.ColumnNumber(column))
+                .firstResultOptional();
+    }
+
+    @Override
     public List<Symbol> findBySimpleName(SimpleName name) {
         return list("name = ?1 AND published = true", name);
     }

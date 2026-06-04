@@ -33,6 +33,8 @@ export interface Token {
   s?: number
   /** Hover text from LSP (type/method signatures) */
   h?: string
+  /** Import group ID — tokens with the same g belong to one import/include statement */
+  g?: number
 }
 
 export type TokenKind =
