@@ -2,6 +2,7 @@ package com.hlag.sourceviewer.infrastructure.scheduler;
 
 import com.hlag.sourceviewer.domain.port.incoming.ExecuteScanJobUseCase;
 import com.hlag.sourceviewer.domain.port.incoming.ManageAppSettingsUseCase;
+import com.hlag.sourceviewer.infrastructure.configuration.ScannerConfiguration;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -9,6 +10,7 @@ import org.eclipse.microprofile.context.ManagedExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -37,16 +39,19 @@ public class ScanWorkerDispatcher {
     private final ExecuteScanJobUseCase executeScanJobUseCase;
     private final ManageAppSettingsUseCase manageAppSettingsUseCase;
     private final ManagedExecutor managedExecutor;
+    private final ScannerConfiguration scannerConfiguration;
     private final AtomicInteger activeJobs = new AtomicInteger(0);
 
     @Inject
     public ScanWorkerDispatcher(
             ExecuteScanJobUseCase executeScanJobUseCase,
             ManageAppSettingsUseCase manageAppSettingsUseCase,
-            ManagedExecutor managedExecutor) {
+            ManagedExecutor managedExecutor,
+            ScannerConfiguration scannerConfiguration) {
         this.executeScanJobUseCase = executeScanJobUseCase;
         this.manageAppSettingsUseCase = manageAppSettingsUseCase;
         this.managedExecutor = managedExecutor;
+        this.scannerConfiguration = scannerConfiguration;
     }
 
     /**
@@ -72,6 +77,16 @@ public class ScanWorkerDispatcher {
                     activeJobs.decrementAndGet();
                 }
             });
+        }
+    }
+
+    @Scheduled(every = "1m")
+    void recoverStaleJobs() {
+        Instant staleBefore = Instant.now()
+                .minusSeconds((long) scannerConfiguration.scanTimeoutSeconds() * 3);
+        int recovered = executeScanJobUseCase.recoverStaleJobs(staleBefore);
+        if (recovered > 0) {
+            logger.warn("Recovered {} stale scan job(s)", recovered);
         }
     }
 

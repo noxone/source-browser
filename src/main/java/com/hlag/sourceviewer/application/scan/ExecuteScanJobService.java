@@ -266,7 +266,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         }
 
         // ── Phase 1: full-text-search document indexing ───────────────────────
-        int indexed = runBatchLoop(toIndex, repository.name().value(), "document",
+        int indexed = runBatchLoop(scanJob.identifier(), toIndex, repository.name().value(), "document",
                 batch -> indexDocumentBatch(batch, scanJob, repository, targetSha, branchName));
 
         // ── Phase 2: language-specific symbol indexing ────────────────────────
@@ -276,7 +276,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
 
         try {
             if (!indexerContexts.isEmpty()) {
-                runBatchLoop(toIndex, repository.name().value(), "symbol",
+                runBatchLoop(scanJob.identifier(), toIndex, repository.name().value(), "symbol",
                         batch -> indexSymbolBatch(batch, scanJob, repository, targetSha, indexerContexts));
             } else {
                 logger.info("No symbol indexers available for repository '{}'", repository.name().value());
@@ -302,8 +302,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
      * Returns the total count returned by {@code batchAction} (meaningful for Phase 1;
      * Phase 2 can ignore the return value).
      */
-    private int runBatchLoop(List<FilePath> files, String repositoryName, String phase,
-                             BatchAction batchAction) {
+    private int runBatchLoop(ScanJobIdentifier jobIdentifier, List<FilePath> files,
+                             String repositoryName, String phase, BatchAction batchAction) {
         int currentBatchSize = Integer.parseInt(manageAppSettings.getSetting(
                 ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE));
@@ -314,6 +314,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             AtomicInteger batchCount = new AtomicInteger(0);
             try {
                 runInNewTransaction(() -> batchCount.set(batchAction.run(batch)));
+                updateHeartbeat(jobIdentifier);
                 numberOfProcessedFiles += batchCount.get();
                 indexInFiles += batch.size();
             } catch (TransactionTimeoutException e) {
@@ -540,6 +541,32 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         repository.setLastCommitSha(targetSha);
         repository.setLastScannedAt(Instant.now());
         repositoryStore.update(repository);
+    }
+
+    @Override
+    public int recoverStaleJobs(Instant staleBefore) {
+        List<ScanJob> stale = scanJobRepository.findStaleRunningJobs(staleBefore);
+        for (ScanJob job : stale) {
+            ScanJobIdentifier id = job.identifier();
+            logger.warn("Recovering stale scan job {} (repository {}, last heartbeat {})",
+                    id.value(), job.repositoryIdentifier().value(),
+                    job.lastHeartbeatAt().map(Instant::toString).orElse("never"));
+            cleanupOnFailure(id);
+            markFailed(id, "Scan job timed out — no heartbeat detected, likely killed mid-run");
+        }
+        return stale.size();
+    }
+
+    private void updateHeartbeat(ScanJobIdentifier identifier) {
+        try {
+            runInNewTransaction(() ->
+                    scanJobRepository.findByIdentifier(identifier).ifPresent(job -> {
+                        job.setLastHeartbeatAt(Instant.now());
+                        scanJobRepository.update(job);
+                    }));
+        } catch (Exception e) {
+            logger.warn("Failed to update heartbeat for scan job {}", identifier.value(), e);
+        }
     }
 
     /**

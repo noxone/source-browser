@@ -5,6 +5,7 @@ import com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.*;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,4 +31,7 @@ public interface ScanJobRepository {
     void deleteById(ScanJobIdentifier identifier);
 
     void deleteAllQueued();
+
+    /** Returns RUNNING jobs whose heartbeat is older than {@code staleBefore}, or that never sent one. */
+    List<ScanJob> findStaleRunningJobs(Instant staleBefore);
 }
