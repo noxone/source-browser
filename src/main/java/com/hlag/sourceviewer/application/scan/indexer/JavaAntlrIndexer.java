@@ -1,7 +1,22 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.BLOCK_COMMENT;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.CHAR_LITERAL;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.FLOAT_LITERAL;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.IDENTIFIER;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.INTEGER_LITERAL;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.JAVADOC_COMMENT;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.KEYWORD;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.LINE_COMMENT;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.LONG_LITERAL;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.OPERATOR;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.OTHER;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.SEPARATOR;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.STRING_LITERAL;
+import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.WHITESPACE;
+import static java.util.Optional.empty;
 import static java.util.Optional.of;
-import static java.util.Optional.ofNullable;import static java.util.Optional.empty;
+import static java.util.Optional.ofNullable;
 
 import com.hlag.sourceviewer.application.scan.ParsedFile;
 import com.hlag.sourceviewer.application.scan.PendingReference;
@@ -31,16 +46,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -48,12 +59,21 @@ import java.util.stream.Stream;
 import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.Token;
-import org.eclipse.lsp4j.*;
+import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.DocumentSymbolParams;
+import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.HoverParams;
+import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.LocationLink;
+import org.eclipse.lsp4j.MarkedString;
+import org.eclipse.lsp4j.MarkupContent;
+import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.SymbolInformation;
+import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import static com.hlag.sourceviewer.domain.model.source.ExtractedToken.TokenKind.*;
 
 /**
  * Java fallback indexer using ANTLR tokenization and lightweight symbol extraction.
@@ -84,6 +104,19 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             "public", "private", "protected", "static", "final", "abstract", "native", "synchronized",
             "strictfp", "default", "transient", "volatile");
 
+    private static final List<String> BUILD_DESCRIPTORS = List.of("pom.xml", "build.gradle", "build.gradle.kts",
+            "settings.gradle", "settings.gradle.kts");
+
+    private static boolean hasBuildDescriptor(Path dir) {
+        return BUILD_DESCRIPTORS.stream()
+                .map(dir::resolve)
+                .anyMatch(Files::isRegularFile);
+    }
+
+    private static boolean isBuildDescriptor(Path file) {
+        return BUILD_DESCRIPTORS.contains(file.getFileName().toString());
+    }
+
     private final LspManager lspManager;
 
     @Inject
@@ -108,7 +141,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
     @Override
     public boolean handles(FilePath path) {
-        return path.isJavaFile();
+        return path.hasExtension("java");
     }
 
     @Override
@@ -150,31 +183,13 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             if (candidateRoots.size() == 1) {
                 return candidateRoots.getFirst();
             }
-        } catch (Exception ignored) {
-            // Fall through to repo root when descriptor discovery fails.
+        } catch (IOException exception) {
+            logger.warn("Failed to resolve lsp project root", exception);
         }
 
         return repoRoot;
     }
 
-    private static boolean hasBuildDescriptor(Path dir) {
-        return Files.isRegularFile(dir.resolve("pom.xml"))
-                || Files.isRegularFile(dir.resolve("build.gradle"))
-                || Files.isRegularFile(dir.resolve("build.gradle.kts"))
-                || Files.isRegularFile(dir.resolve("settings.gradle"))
-                || Files.isRegularFile(dir.resolve("settings.gradle.kts"));
-    }
-
-    private static boolean isBuildDescriptor(Path file) {
-        String name = file.getFileName().toString();
-        return "pom.xml".equals(name)
-                || "build.gradle".equals(name)
-                || "build.gradle.kts".equals(name)
-                || "settings.gradle".equals(name)
-                || "settings.gradle.kts".equals(name);
-    }
-
-    @SuppressWarnings("unchecked")
     private Optional<LanguageServerSession<? extends DiagnosticsCapable>> tryStartLspSession(Path repoRoot, Repository repository) {
         if (lspManager == null) {
             return Optional.empty();
@@ -233,8 +248,9 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
         // Phase 2b: LSP-based reference resolution via textDocument/definition
         Set<String> declarationPositions = symbols.stream()
-                .filter(s -> s.lineStart().isPresent() && s.columnStart().isPresent())
-                .map(s -> s.lineStart().get().value() + ":" + s.columnStart().get().value())
+                .map(Symbol::toStartLocation)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
                 .collect(Collectors.toSet());
         List<PendingReference> references = resolveReferencesViaDefinition(
                 fileUri, parsedFile.tokens(), declarationPositions, session, indexingContext.repoRoot());

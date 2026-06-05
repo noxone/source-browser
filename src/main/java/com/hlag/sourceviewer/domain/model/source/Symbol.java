@@ -136,4 +136,11 @@ public class Symbol {
     public List<String> modifiers() {
         return modifiers == null ? List.of() : Arrays.asList(modifiers);
     }
+
+    public Optional<String> toStartLocation() {
+        if (lineStart == null || columnStart == null) {
+            return Optional.empty();
+        }
+        return Optional.of(lineStart.value() + ":" + columnStart.value());
+    }
 }

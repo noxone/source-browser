@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col min-h-full">
+  <div class="h-full overflow-y-auto p-8 flex flex-col">
     <!-- Search bar -->
     <div class="mb-6">
       <h2 class="text-2xl font-bold text-gray-900 mb-4">Search</h2>
