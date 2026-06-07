@@ -9,11 +9,12 @@ import type { JavadocProvider } from '../types/javadoc-provider'
  *   {anchor}    – empty, or "#methodName(Param1,Param2)" for methods/constructors
  */
 export function buildJavadocUrl(
-  qualifiedName: string,
+  qualifiedName: string | null | undefined,
   kind: string,
   signature: string | null | undefined,
   providers: JavadocProvider[]
 ): string | null {
+  if (!qualifiedName) return null
   const provider = findBestProvider(qualifiedName, providers)
   if (!provider) return null
 

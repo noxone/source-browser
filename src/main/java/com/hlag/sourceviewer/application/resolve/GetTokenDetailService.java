@@ -1,0 +1,143 @@
+package com.hlag.sourceviewer.application.resolve;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
+import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
+import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
+import com.hlag.sourceviewer.domain.model.source.Symbol;
+import com.hlag.sourceviewer.domain.model.source.TypeHierarchyEntry;
+import com.hlag.sourceviewer.domain.port.incoming.GetTokenDetailUseCase;
+import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
+import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TokenDetailRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TypeHierarchyRepository;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+@ApplicationScoped
+public class GetTokenDetailService implements GetTokenDetailUseCase {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+
+    private final TokenDetailRepository tokenDetailRepository;
+    private final TypeHierarchyRepository typeHierarchyRepository;
+    private final SymbolRepository symbolRepository;
+    private final SourceFileRepository sourceFileRepository;
+    private final RepositoryStore repositoryStore;
+
+    @Inject
+    public GetTokenDetailService(
+            TokenDetailRepository tokenDetailRepository,
+            TypeHierarchyRepository typeHierarchyRepository,
+            SymbolRepository symbolRepository,
+            SourceFileRepository sourceFileRepository,
+            RepositoryStore repositoryStore) {
+        this.tokenDetailRepository = tokenDetailRepository;
+        this.typeHierarchyRepository = typeHierarchyRepository;
+        this.symbolRepository = symbolRepository;
+        this.sourceFileRepository = sourceFileRepository;
+        this.repositoryStore = repositoryStore;
+    }
+
+    @Override
+    public Optional<Map<String, Object>> getDetail(FileIdentifier fileId, int line, int col) {
+        return tokenDetailRepository.findByFileAndPosition(fileId, line, col).map(td -> {
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("detailType", td.detailType());
+
+            try {
+                Map<String, Object> detail = MAPPER.readValue(td.detail(), MAP_TYPE);
+                response.putAll(detail);
+            } catch (Exception ignored) {
+                // stored detail is invalid JSON — return bare detailType
+            }
+
+            String detailType = td.detailType();
+            if ("METHOD_CALL".equals(detailType) || "METHOD_DECL".equals(detailType)) {
+                String declaringClass = (String) response.get("declaringClass");
+                String name = (String) response.get("name");
+                if (declaringClass != null && name != null) {
+                    response.put("overloads", findOverloads(declaringClass, name));
+                    response.put("implementations", findImplementations(declaringClass, name));
+                }
+            } else if ("TYPE_DECL".equals(detailType)) {
+                String qualifiedName = (String) response.get("qualifiedName");
+                if (qualifiedName != null) {
+                    response.put("knownSubtypes", buildSubtypeList(qualifiedName));
+                }
+            } else if ("VARIABLE".equals(detailType)) {
+                String typeFqn = (String) response.get("typeFqn");
+                if (typeFqn != null) {
+                    enrichWithTypeLocation(typeFqn, response);
+                }
+            }
+
+            return response;
+        });
+    }
+
+    private void enrichWithTypeLocation(String typeFqn, Map<String, Object> response) {
+        symbolRepository.findByQualifiedName(new QualifiedName(typeFqn)).ifPresent(sym -> {
+            response.put("typeFileId", sym.fileIdentifier().value());
+            sym.lineStart().ifPresent(l -> response.put("typeLineStart", l.value()));
+            sourceFileRepository.findByIdentifier(sym.fileIdentifier()).ifPresent(sf -> {
+                response.put("typeFilePath", sf.path().value());
+                repositoryStore.findByIdentifier(sf.repositoryIdentifier())
+                        .ifPresent(r -> response.put("typeRepositoryName", r.name().value()));
+            });
+        });
+    }
+
+    private List<String> findOverloads(String declaringClass, String methodName) {
+        String prefix = declaringClass + "." + methodName;
+        return symbolRepository.findByQualifiedNamePrefix(prefix).stream()
+                .filter(s -> s.kind() == SymbolKind.METHOD || s.kind() == SymbolKind.CONSTRUCTOR)
+                .map(s -> {
+                    String sig = s.signature().map(ss -> ss.value()).orElse("()");
+                    return methodName + sig;
+                })
+                .toList();
+    }
+
+    private List<Map<String, Object>> findImplementations(String declaringClass, String methodName) {
+        List<TypeHierarchyEntry> subtypes = typeHierarchyRepository.findSubtypes(declaringClass);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (TypeHierarchyEntry subtype : subtypes) {
+            String prefix = subtype.subtypeFqn() + "." + methodName;
+            symbolRepository.findByQualifiedNamePrefix(prefix).stream()
+                    .filter(s -> s.kind() == SymbolKind.METHOD || s.kind() == SymbolKind.CONSTRUCTOR)
+                    .forEach(method -> result.add(buildImplEntry(method)));
+        }
+        return result;
+    }
+
+    private Map<String, Object> buildImplEntry(Symbol method) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        entry.put("qualifiedName", method.qualifiedName().value());
+        entry.put("fileId", method.fileIdentifier().value());
+        sourceFileRepository.findByIdentifier(method.fileIdentifier()).ifPresent(sf -> {
+            entry.put("filePath", sf.path().value());
+            repositoryStore.findByIdentifier(sf.repositoryIdentifier())
+                    .ifPresent(r -> entry.put("repositoryName", r.name().value()));
+        });
+        return entry;
+    }
+
+    private List<Map<String, Object>> buildSubtypeList(String typeFqn) {
+        return typeHierarchyRepository.findSubtypes(typeFqn).stream().map(entry -> {
+            Map<String, Object> dto = new LinkedHashMap<>();
+            dto.put("qualifiedName", entry.subtypeFqn());
+            dto.put("relationshipKind", entry.relationshipKind());
+            return dto;
+        }).toList();
+    }
+}

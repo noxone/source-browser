@@ -60,6 +60,21 @@ public class PanacheSymbolRepository
     }
 
     @Override
+    public List<Symbol> findByQualifiedNamePrefix(String prefix) {
+        // Native SQL required: JPQL cannot navigate into a @AttributeConverter-mapped field.
+        // Escape LIKE special characters so method names containing '_' are not treated as wildcards.
+        String escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+        @SuppressWarnings("unchecked")
+        java.util.List<Symbol> result = getEntityManager()
+                .createNativeQuery(
+                        "SELECT * FROM symbol WHERE qualified_name LIKE :prefix ESCAPE '\\' AND published = true",
+                        Symbol.class)
+                .setParameter("prefix", escaped + "%")
+                .getResultList();
+        return result;
+    }
+
+    @Override
     public List<Symbol> findByFile(FileIdentifier fileIdentifier) {
         return list("fileIdentifier = ?1 AND published = true", fileIdentifier);
     }

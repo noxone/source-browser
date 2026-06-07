@@ -31,10 +31,9 @@ public class TokenStreamSerializer {
                 node.put("ce", t.columnEnd());
                 node.put("t",  t.text());
                 node.put("k",  t.kind().name());
-                if (t.qualifiedName() != null) node.put("q", t.qualifiedName());
-                if (t.symbolId()      != null) node.put("s", t.symbolId());
-                if (t.hoverText()     != null) node.put("h", t.hoverText());
-                if (t.groupId()       != null) node.put("g", t.groupId());
+                if (t.groupId()          != null)  node.put("g",  t.groupId());
+                if (t.highlightGroupId() != null)  node.put("hg", t.highlightGroupId());
+                if (t.hasDetails())                node.put("d",  true);
                 array.add(node);
             }
             byte[] json = mapper.writeValueAsBytes(array);

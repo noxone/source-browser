@@ -154,23 +154,25 @@ public class JdtlsLanguageServerProvider implements LanguageServerProvider {
 
     private static void initializeServer(LanguageServer languageServer, LspProjectContext context,
                                          Path mavenSettingsPath) {
-        InitializeParams params = new InitializeParams();
-        params.setRootUri(context.projectRootUri());
-        params.setWorkspaceFolders(List.of(new WorkspaceFolder(
+        InitializeParams initParams = new InitializeParams();
+        initParams.setRootUri(context.projectRootUri());
+        initParams.setWorkspaceFolders(List.of(new WorkspaceFolder(
                 context.projectRoot().toUri().toString(),
                 context.repository().name().value())));
 
-        ClientCapabilities capabilities = new ClientCapabilities();
+        ClientCapabilities clientCapabilities = new ClientCapabilities();
         // workspace
         WorkspaceClientCapabilities workspaceCapabilities = new WorkspaceClientCapabilities();
         workspaceCapabilities.setConfiguration(true);
         workspaceCapabilities.setDidChangeConfiguration(new org.eclipse.lsp4j.DidChangeConfigurationCapabilities(true));
-        capabilities.setWorkspace(workspaceCapabilities);
+        clientCapabilities.setWorkspace(workspaceCapabilities);
         // symbols im document -> text document
         DocumentSymbolCapabilities documentSymbolCapabilities = new DocumentSymbolCapabilities();
         documentSymbolCapabilities.setHierarchicalDocumentSymbolSupport(true);
+        documentSymbolCapabilities.setLabelSupport(true);
         // hover -> text document
         HoverCapabilities hoverCapabilities = new HoverCapabilities();
+        hoverCapabilities.setContentFormat(List.of(MarkupKind.MARKDOWN));
         // 2. References – alle Verwendungsstellen eines Symbols finden
         //ReferenceCapabilities referenceCapabilities = new ReferenceCapabilities();
         //textDocumentCapabilities.setReferences(referenceCapabilities);
@@ -194,14 +196,14 @@ public class JdtlsLanguageServerProvider implements LanguageServerProvider {
         textDocumentCapabilities.setImplementation(implementationCapabilities);
         textDocumentCapabilities.setCallHierarchy(callHierarchyCapabilities);
         textDocumentCapabilities.setSemanticTokens(semanticTokensCapabilities);
-        capabilities.setTextDocument(textDocumentCapabilities);
+        clientCapabilities.setTextDocument(textDocumentCapabilities);
         // setzen
-        params.setCapabilities(capabilities);
+        initParams.setCapabilities(clientCapabilities);
 
-        params.setInitializationOptions(buildInitializationOptions(mavenSettingsPath));
+        initParams.setInitializationOptions(buildInitializationOptions(mavenSettingsPath));
 
         try {
-            InitializeResult result = languageServer.initialize(params).get(30, TimeUnit.SECONDS);
+            InitializeResult result = languageServer.initialize(initParams).get(30, TimeUnit.SECONDS);
             if (result == null) {
                 throw new IllegalStateException("JDTLS initialize returned no result");
             }

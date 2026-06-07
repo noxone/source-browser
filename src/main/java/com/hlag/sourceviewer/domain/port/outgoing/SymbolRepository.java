@@ -41,6 +41,13 @@ public interface SymbolRepository {
 
     List<Symbol> findBySimpleName(SimpleName name);
 
+    /**
+     * Returns all published symbols whose qualified name starts with {@code prefix}.
+     * Used to find overloads (prefix = "declaringClass.methodName") and
+     * implementations in subtypes.
+     */
+    List<Symbol> findByQualifiedNamePrefix(String prefix);
+
     List<Symbol> findByFile(FileIdentifier fileIdentifier);
 
     SymbolIdentifier insert(Symbol symbol);

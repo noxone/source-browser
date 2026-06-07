@@ -2,17 +2,20 @@ import { useAuth } from '../auth/useAuth'
 
 /**
  * Wraps {@link fetch} with an Authorization Bearer token from the current OIDC session.
- * Triggers a login redirect if no token is available or if the server returns 401.
+ * By default, triggers a login redirect if no token is available or if the server returns 401.
+ * Pass `{ noRedirect: true }` to throw instead of redirecting (use for inline AJAX calls
+ * where a page navigation would be disruptive).
  */
 export async function authenticatedFetch(
   input: RequestInfo | URL,
-  init?: RequestInit
+  init?: RequestInit,
+  options?: { noRedirect?: boolean }
 ): Promise<Response> {
   const { getAccessToken, login } = useAuth()
   const token = getAccessToken()
 
   if (!token) {
-    await login()
+    if (!options?.noRedirect) await login()
     throw new Error('Redirecting to login')
   }
 
@@ -22,8 +25,8 @@ export async function authenticatedFetch(
   const response = await fetch(input, { ...init, headers })
 
   if (response.status === 401) {
-    await login()
-    throw new Error('Session expired, redirecting to login')
+    if (!options?.noRedirect) await login()
+    throw new Error('Session expired — please refresh the page to re-authenticate')
   }
 
   return response

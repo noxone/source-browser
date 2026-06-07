@@ -145,10 +145,13 @@ public abstract class AbstractAntlr4Indexer implements LanguageIndexer {
             return new ParsedFile(
                     /* declarations */ symbols,
                     /* references */ List.of(),
-                    /* token */ extractedTokens);
+                    /* tokens */ extractedTokens,
+                    /* tokenDetails */ List.of(),
+                    /* hierarchyEntries */ List.of(),
+                    /* highlightGroups */ java.util.Map.of());
         } catch (Exception e) {
             logger.warn("Could not tokenise {}: {}", path.value(), e.getMessage());
-            return new ParsedFile(List.of(), List.of(), List.of());
+            return ParsedFile.empty();
         }
     }
 
@@ -171,7 +174,6 @@ public abstract class AbstractAntlr4Indexer implements LanguageIndexer {
                 mapTokenKind(token.getType()),
                 null,
                 null,
-                null,
-                null));
+                false));
     }
 }

@@ -46,8 +46,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -225,8 +227,8 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
         final var session = ctx.session().get();
         final var fileUri = resolveFileUri(session.projectRoot(), path);
-        return withDocument(session, fileUri, "java", content, 10, () ->
-                extractInformationFromDocument(session, ctx, groupedParsedFile, fileId, fileUri, content));
+        return withDocument(session, fileUri, "java", content, 300, () ->
+                extractInformationFromDocument(session, ctx, groupedParsedFile, fileId, path, fileUri, content));
     }
 
     private ParsedFile extractInformationFromDocument(
@@ -234,10 +236,12 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             final JavaAntlrIndexingContext indexingContext,
             final ParsedFile parsedFile,
             final FileIdentifier fileId,
+            final FilePath filePath,
             final String fileUri,
             final String content
     ) {
         final var filename = Path.of(URI.create(fileUri)).getFileName().toString();
+        final var textDocId = new TextDocumentIdentifier(fileUri);
 
         // Phase 2a: LSP-based symbol extraction (replaces ANTLR symbols if non-empty)
         final var packagePrefix = extractPackagePrefix(content);
@@ -246,21 +250,562 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         logger.debug("[JDTLS] {}: {} symbols via documentSymbol (fallback={})",
                 filename, symbols.size(), lspSymbols.isEmpty());
 
+        // Build symbol position lookup for declaration token enrichment
+        Map<String, Symbol> symbolsByPosition = new HashMap<>();
+        for (Symbol sym : symbols) {
+            sym.toStartLocation().ifPresent(key -> symbolsByPosition.put(key, sym));
+        }
+
         // Phase 2b: LSP-based reference resolution via textDocument/definition
-        Set<String> declarationPositions = symbols.stream()
-                .map(Symbol::toStartLocation)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(Collectors.toSet());
+        Set<String> declarationPositions = symbolsByPosition.keySet();
         List<PendingReference> references = resolveReferencesViaDefinition(
                 fileUri, parsedFile.tokens(), declarationPositions, session, indexingContext.repoRoot());
         logger.debug("[JDTLS] {}: {} references resolved via definition", filename, references.size());
 
-        // Phase 2c: hover enrichment (existing)
-        //List<ExtractedToken> enrichedTokens = enrichTokensWithHover(fileUri, parsedFile.tokens(), session, filename);
-        var enrichedTokens = parsedFile.tokens();
+        // Build import map once — shared by detail extraction and hierarchy extraction
+        Map<String, String> importMap = buildImportMap(parsedFile.tokens());
 
-        return new ParsedFile(symbols, references, enrichedTokens);
+        // Phase 2c: Token detail extraction via LSP hover + import map fallback
+        List<com.hlag.sourceviewer.domain.model.source.TokenDetail> tokenDetails =
+                extractTokenDetails(session, textDocId, fileId, parsedFile.tokens(),
+                        declarationPositions, symbolsByPosition, importMap, filename);
+        // Phase 2c2: import-identifier details (always clickable without hover)
+        tokenDetails.addAll(extractImportTokenDetails(parsedFile.tokens(), fileId, importMap));
+        logger.debug("[JDTLS] {}: {} token details extracted", filename, tokenDetails.size());
+
+        // Phase 2d: Highlight groups from definition locations
+        Map<String, Integer> highlightGroups =
+                computeHighlightGroups(references, filePath, symbolsByPosition);
+        logger.debug("[JDTLS] {}: {} highlight groups computed", filename, highlightGroups.size());
+
+        // Phase 2e: Type hierarchy from ANTLR token stream
+        List<com.hlag.sourceviewer.domain.model.source.TypeHierarchyEntry> hierarchy =
+                extractTypeHierarchy(parsedFile.tokens(), packagePrefix, importMap);
+        logger.debug("[JDTLS] {}: {} type hierarchy entries extracted", filename, hierarchy.size());
+
+        return new ParsedFile(symbols, references, parsedFile.tokens(),
+                tokenDetails, hierarchy, highlightGroups);
+    }
+
+    // -- Token detail extraction (hover) ---------------------------------------
+
+    private List<com.hlag.sourceviewer.domain.model.source.TokenDetail> extractTokenDetails(
+            LanguageServerSession<?> session,
+            TextDocumentIdentifier textDocId,
+            FileIdentifier fileId,
+            List<ExtractedToken> tokens,
+            Set<String> declarationPositions,
+            Map<String, Symbol> symbolsByPosition,
+            Map<String, String> importMap,
+            String filename) {
+
+        // Detect annotation token positions: IDENTIFIER immediately preceded by '@'
+        Set<String> annotationPositions = new java.util.HashSet<>();
+        for (int i = 1; i < tokens.size(); i++) {
+            ExtractedToken prev = tokens.get(i - 1);
+            ExtractedToken cur  = tokens.get(i);
+            if (cur.is(IDENTIFIER) && prev.is(SEPARATOR, "@")) {
+                annotationPositions.add(cur.line() + ":" + cur.columnStart());
+            } else if (cur.is(IDENTIFIER) && prev.is(WHITESPACE)) {
+                // Look further back through whitespace
+                for (int j = i - 2; j >= 0; j--) {
+                    ExtractedToken t = tokens.get(j);
+                    if (t.is(WHITESPACE)) continue;
+                    if (t.is(SEPARATOR, "@")) {
+                        annotationPositions.add(cur.line() + ":" + cur.columnStart());
+                    }
+                    break;
+                }
+            }
+        }
+
+        List<com.hlag.sourceviewer.domain.model.source.TokenDetail> result = new ArrayList<>();
+        for (ExtractedToken token : tokens) {
+            if (!token.is(IDENTIFIER)) {
+                continue;
+            }
+            String posKey = token.line() + ":" + token.columnStart();
+
+            // For declaration tokens, build detail from symbol info (no LSP call needed)
+            if (declarationPositions.contains(posKey)) {
+                Symbol sym = symbolsByPosition.get(posKey);
+                if (sym != null) {
+                    com.hlag.sourceviewer.domain.model.source.TokenDetail td =
+                            buildDetailFromSymbol(fileId, token, sym, importMap);
+                    if (td != null) result.add(td);
+                }
+                continue;
+            }
+
+            // For reference tokens, call hover and parse the result
+            String javaCode = fetchJavaHoverCode(session, textDocId, token);
+
+            // Override: if preceded by @, treat as annotation regardless of hover
+            if (annotationPositions.contains(posKey)) {
+                String fqn = null;
+                if (javaCode != null) {
+                    HoverTextParser.ParsedDetail parsed = HoverTextParser.parse(javaCode);
+                    if (parsed != null && parsed.type() == com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.ANNOTATION) {
+                        // Hover already gave us an AnnotationDetail — resolve FQN if still simple
+                        com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail ad =
+                                (com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail) parsed.detail();
+                        fqn = ad.qualifiedName();
+                    } else {
+                        fqn = deriveAnnotationFqn(javaCode, token.text());
+                    }
+                }
+                if (fqn == null) fqn = token.text();
+                // Resolve simple name via import map
+                if (!fqn.contains(".")) fqn = importMap.getOrDefault(fqn, fqn);
+                result.add(buildTokenDetail(fileId, token,
+                        com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.ANNOTATION,
+                        new com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail(fqn)));
+                continue;
+            }
+
+            if (javaCode == null) {
+                // Hover returned nothing — fall back to import map or java.lang for type references
+                String fqn = importMap.get(token.text());
+                if (fqn == null) fqn = javaLangFqn(token.text());
+                if (fqn != null) {
+                    result.add(buildTokenDetail(fileId, token,
+                            com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                            new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS")));
+                }
+                continue;
+            }
+
+            HoverTextParser.ParsedDetail parsed = HoverTextParser.parse(javaCode);
+            if (parsed != null) {
+                // Resolve simple declaringClass to FQN for method details
+                Object detail = resolveDetailFqns(parsed.detail(), importMap);
+                result.add(buildTokenDetail(fileId, token, parsed.type(), detail));
+            } else {
+                // Hover code present but unparseable (e.g. class declaration prefixed by annotations).
+                // Fall back to import map / java.lang lookup for type references.
+                String fqn = importMap.get(token.text());
+                if (fqn == null) fqn = javaLangFqn(token.text());
+                if (fqn != null) {
+                    result.add(buildTokenDetail(fileId, token,
+                            com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                            new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS")));
+                }
+            }
+        }
+        return result;
+    }
+
+    private static com.hlag.sourceviewer.domain.model.source.TokenDetail buildDetailFromSymbol(
+            FileIdentifier fileId, ExtractedToken token, Symbol sym, Map<String, String> importMap) {
+        com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType type;
+        Object detail;
+        switch (sym.kind()) {
+            case CLASS, INTERFACE, ENUM, RECORD -> {
+                type = com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_DECL;
+                detail = new com.hlag.sourceviewer.domain.model.source.detail.TypeDeclDetail(
+                        sym.qualifiedName().value(),
+                        sym.kind().name(),
+                        null,   // superclassFqn — filled in by extractTypeHierarchy
+                        List.of());
+            }
+            case METHOD, CONSTRUCTOR -> {
+                type = com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.METHOD_DECL;
+                detail = new com.hlag.sourceviewer.domain.model.source.detail.MethodDetail(
+                        token.text(),
+                        sym.qualifiedName().value().contains(".")
+                                ? sym.qualifiedName().value().substring(0,
+                                        sym.qualifiedName().value().lastIndexOf('.'))
+                                : null,
+                        null, List.of());
+            }
+            case FIELD, CONSTANT, ENUM_CONSTANT -> {
+                type = com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.VARIABLE;
+                // JDTLS stores the field type in DocumentSymbol.getDetail(), which is mapped to sym.signature()
+                String rawType = sym.signature().map(s -> s.value()).orElse(null);
+                String typeFqn = resolveRawTypeName(rawType, importMap);
+                detail = new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(
+                        token.text(), "FIELD", typeFqn);
+            }
+            case LOCAL_VARIABLE -> {
+                type = com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.VARIABLE;
+                detail = new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(
+                        token.text(), "LOCAL", null);
+            }
+            case PARAMETER -> {
+                type = com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.VARIABLE;
+                String rawType = sym.signature().map(s -> s.value()).orElse(null);
+                String typeFqn = resolveRawTypeName(rawType, importMap);
+                detail = new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(
+                        token.text(), "PARAMETER", typeFqn);
+            }
+            default -> {
+                return null;
+            }
+        }
+        return buildTokenDetail(fileId, token, type, detail);
+    }
+
+    /**
+     * Resolves a raw type name (as returned by JDTLS DocumentSymbol.getDetail()) to a FQN.
+     * Strips generics and array brackets, then checks the import map and java.lang.
+     * Returns null for primitive types and unresolvable names.
+     */
+    private static String resolveRawTypeName(String rawType, Map<String, String> importMap) {
+        if (rawType == null || rawType.isBlank()) return null;
+        // Strip generics and arrays: "List<String>" → "List", "String[]" → "String"
+        String base = rawType;
+        int idx = base.indexOf('<');
+        if (idx >= 0) base = base.substring(0, idx);
+        idx = base.indexOf('[');
+        if (idx >= 0) base = base.substring(0, idx);
+        base = base.strip();
+        if (base.isEmpty()) return null;
+        if (isPrimitive(base)) return null;
+        if (base.contains(".")) return base; // already qualified
+        String fqn = importMap.get(base);
+        if (fqn != null) return fqn;
+        return javaLangFqn(base); // null if not java.lang
+    }
+
+    private static boolean isPrimitive(String name) {
+        return switch (name) {
+            case "int", "long", "double", "float", "boolean", "byte", "char", "short", "void" -> true;
+            default -> false;
+        };
+    }
+
+    private static com.hlag.sourceviewer.domain.model.source.TokenDetail buildTokenDetail(
+            FileIdentifier fileId, ExtractedToken token,
+            com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType type, Object detail) {
+        return new com.hlag.sourceviewer.domain.model.source.TokenDetail(
+                fileId, token.line(), token.columnStart(),
+                type.name(), HoverTextParser.toJson(detail));
+    }
+
+    private String fetchJavaHoverCode(LanguageServerSession<?> session,
+                                       TextDocumentIdentifier textDocId,
+                                       ExtractedToken token) {
+        try {
+            HoverParams params = new HoverParams(textDocId, toPosition(token));
+            org.eclipse.lsp4j.Hover hover = session.textDocumentService()
+                    .hover(params)
+                    .get(HOVER_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (hover == null || hover.getContents() == null) return null;
+            return extractJavaCode(hover);
+        } catch (Exception e) {
+            logger.trace("[JDTLS] hover failed for '{}' at {}:{}: {}",
+                    token.text(), token.line(), token.columnStart(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** Extracts the first Java-language code block from a hover response. */
+    private static String extractJavaCode(org.eclipse.lsp4j.Hover hover) {
+        var contents = hover.getContents();
+        if (contents == null) return null;
+
+        // Either<List<Either<String, MarkedString>>, MarkupContent>
+        if (contents.isRight()) {
+            // MarkupContent: may contain markdown fenced code blocks
+            String value = contents.getRight().getValue();
+            if (value == null) return null;
+            // Extract ```java ... ``` blocks
+            int start = value.indexOf("```java");
+            if (start >= 0) {
+                int end = value.indexOf("```", start + 7);
+                if (end > start) {
+                    return value.substring(start + 7, end).strip();
+                }
+            }
+            return value.strip();
+        } else {
+            List<Either<String, MarkedString>> left = contents.getLeft();
+            if (left == null) return null;
+            for (Either<String, MarkedString> item : left) {
+                if (item.isRight()) {
+                    MarkedString ms = item.getRight();
+                    if ("java".equals(ms.getLanguage())) {
+                        return ms.getValue();
+                    }
+                }
+            }
+            // Fallback: plain string
+            for (Either<String, MarkedString> item : left) {
+                if (item.isLeft() && item.getLeft() != null && !item.getLeft().isBlank()) {
+                    return item.getLeft().strip();
+                }
+            }
+            return null;
+        }
+    }
+
+    private static String deriveAnnotationFqn(String javaCode, String fallback) {
+        // Try "class FQN" pattern (annotations sometimes appear as class in hover)
+        Matcher m = Pattern.compile("(?:class|interface)\\s+(\\S+)").matcher(javaCode);
+        if (m.find()) return m.group(1);
+        return fallback;
+    }
+
+    /** Resolves simple-name FQN fields in a parsed detail using the import map. */
+    private static Object resolveDetailFqns(Object detail, Map<String, String> importMap) {
+        if (detail instanceof com.hlag.sourceviewer.domain.model.source.detail.MethodDetail md) {
+            String dc = md.declaringClass();
+            if (dc != null && !dc.contains(".")) {
+                dc = importMap.getOrDefault(dc, dc);
+            }
+            if (!Objects.equals(dc, md.declaringClass())) {
+                return new com.hlag.sourceviewer.domain.model.source.detail.MethodDetail(
+                        md.name(), dc, md.returnType(), md.parameters());
+            }
+        } else if (detail instanceof com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail tr) {
+            String fqn = tr.qualifiedName();
+            if (!fqn.contains(".")) {
+                String resolved = importMap.get(fqn);
+                if (resolved == null) resolved = javaLangFqn(fqn);
+                if (resolved != null) {
+                    return new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(resolved, tr.kind());
+                }
+            }
+        }
+        return detail;
+    }
+
+    /** Creates TYPE_REF token details for the last identifier in each non-wildcard import statement. */
+    private static List<com.hlag.sourceviewer.domain.model.source.TokenDetail> extractImportTokenDetails(
+            List<ExtractedToken> tokens, FileIdentifier fileId, Map<String, String> importMap) {
+
+        List<com.hlag.sourceviewer.domain.model.source.TokenDetail> result = new ArrayList<>();
+        for (int i = 0; i < tokens.size(); i++) {
+            if (!tokens.get(i).is(KEYWORD, "import")) continue;
+            // Collect tokens of this import statement up to ';', look for last identifier
+            ExtractedToken lastIdent = null;
+            boolean wildcard = false;
+            for (int j = i + 1; j < tokens.size(); j++) {
+                ExtractedToken t = tokens.get(j);
+                if (t.is(SEPARATOR, ";")) break;
+                if (t.is(OPERATOR, "*")) { wildcard = true; break; }
+                if (t.is(IDENTIFIER)) lastIdent = t;
+            }
+            if (!wildcard && lastIdent != null) {
+                String fqn = importMap.get(lastIdent.text());
+                if (fqn != null) {
+                    result.add(buildTokenDetail(fileId, lastIdent,
+                            com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                            new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS")));
+                }
+            }
+        }
+        return result;
+    }
+
+    // -- Highlight group computation -------------------------------------------
+
+    private static Map<String, Integer> computeHighlightGroups(
+            List<PendingReference> references,
+            FilePath filePath,
+            Map<String, Symbol> symbolsByPosition) {
+
+        Map<String, Integer> defKeyToGroupId = new HashMap<>();
+        Map<String, Integer> tokenPosToGroupId = new HashMap<>();
+        int[] nextId = {1};
+
+        // First, assign group IDs to declaration positions so they share the group
+        // with all their references (declaration IS the definition).
+        for (Map.Entry<String, Symbol> entry : symbolsByPosition.entrySet()) {
+            String posKey = entry.getKey();
+            String defKey = filePath.value() + ":" + posKey;
+            defKeyToGroupId.computeIfAbsent(defKey, k -> nextId[0]++);
+            tokenPosToGroupId.put(posKey, defKeyToGroupId.get(defKey));
+        }
+
+        // Assign reference tokens the same group as their definition
+        for (PendingReference ref : references) {
+            if (ref.line().isEmpty() || ref.column().isEmpty()) continue;
+            if (ref.definitionFilePath().isEmpty() || ref.definitionLine().isEmpty() || ref.definitionColumn().isEmpty()) continue;
+
+            String defKey = ref.definitionFilePath().get().value()
+                    + ":" + ref.definitionLine().get().value()
+                    + ":" + ref.definitionColumn().get().value();
+            int groupId = defKeyToGroupId.computeIfAbsent(defKey, k -> nextId[0]++);
+            String tokenPos = ref.line().get().value() + ":" + ref.column().get().value();
+            tokenPosToGroupId.put(tokenPos, groupId);
+        }
+
+        return tokenPosToGroupId;
+    }
+
+    // -- Type hierarchy extraction (ANTLR token stream) ------------------------
+
+    private static List<com.hlag.sourceviewer.domain.model.source.TypeHierarchyEntry> extractTypeHierarchy(
+            List<ExtractedToken> tokens, String packagePrefix, Map<String, String> importMap) {
+
+        List<com.hlag.sourceviewer.domain.model.source.TypeHierarchyEntry> result = new ArrayList<>();
+        List<String> typeStack = new ArrayList<>();
+        int braceDepth = 0;
+        List<String> currentBraceDepthStack = new ArrayList<>();
+
+        for (int i = 0; i < tokens.size(); i++) {
+            ExtractedToken tok = tokens.get(i);
+
+            if (tok.is(SEPARATOR, "{")) {
+                braceDepth++;
+                continue;
+            }
+            if (tok.is(SEPARATOR, "}")) {
+                if (!currentBraceDepthStack.isEmpty()) {
+                    int lastDepth = Integer.parseInt(currentBraceDepthStack.getLast());
+                    if (braceDepth == lastDepth) {
+                        typeStack.removeLast();
+                        currentBraceDepthStack.removeLast();
+                    }
+                }
+                braceDepth--;
+                continue;
+            }
+
+            if (!tok.is(KEYWORD)) continue;
+            String kw = tok.text();
+            if (!TYPE_KEYWORDS.contains(kw)) continue;
+
+            // Find type name identifier
+            int nameIdx = nextNonWhitespace(tokens, i + 1);
+            if (nameIdx < 0 || !tokens.get(nameIdx).is(IDENTIFIER)) continue;
+            String simpleName = tokens.get(nameIdx).text();
+            String typeFqn = buildTypeFqn(packagePrefix, typeStack, simpleName);
+            typeStack.add(simpleName);
+            currentBraceDepthStack.add(String.valueOf(braceDepth + 1));
+
+            // Scan for extends/implements until we hit '{'
+            int j = nameIdx + 1;
+            boolean inExtends = false;
+            boolean inImplements = false;
+            List<String> currentTypeList = new ArrayList<>();
+
+            while (j < tokens.size()) {
+                ExtractedToken t = tokens.get(j);
+                if (t.is(SEPARATOR, "{") || t.is(SEPARATOR, ";")) break;
+                if (t.is(KEYWORD, "extends")) {
+                    if (!currentTypeList.isEmpty()) {
+                        addHierarchyEntries(result, typeFqn, currentTypeList, inExtends ? "EXTENDS" : "IMPLEMENTS", importMap, packagePrefix);
+                        currentTypeList.clear();
+                    }
+                    inExtends = true; inImplements = false;
+                } else if (t.is(KEYWORD, "implements")) {
+                    if (!currentTypeList.isEmpty()) {
+                        addHierarchyEntries(result, typeFqn, currentTypeList, inExtends ? "EXTENDS" : "IMPLEMENTS", importMap, packagePrefix);
+                        currentTypeList.clear();
+                    }
+                    inImplements = true; inExtends = false;
+                } else if ((inExtends || inImplements) && t.is(IDENTIFIER)) {
+                    // Collect type name (may have generic params we skip)
+                    StringBuilder typeName = new StringBuilder(t.text());
+                    int k = j + 1;
+                    while (k < tokens.size() && tokens.get(k).is(SEPARATOR, ".")) {
+                        if (k + 1 < tokens.size() && tokens.get(k + 1).is(IDENTIFIER)) {
+                            typeName.append('.').append(tokens.get(k + 1).text());
+                            k += 2;
+                        } else break;
+                    }
+                    currentTypeList.add(typeName.toString());
+                    j = k;
+                    // Skip generic type params <...>
+                    if (j < tokens.size() && tokens.get(j).is(OPERATOR, "<")) {
+                        int depth = 1;
+                        j++;
+                        while (j < tokens.size() && depth > 0) {
+                            if (tokens.get(j).is(OPERATOR, "<")) depth++;
+                            else if (tokens.get(j).is(OPERATOR, ">")) depth--;
+                            j++;
+                        }
+                    }
+                    // Check for comma (multiple implements)
+                    if (j < tokens.size() && tokens.get(j).is(SEPARATOR, ",")) {
+                        j++;
+                    }
+                    continue;
+                }
+                j++;
+            }
+            if (!currentTypeList.isEmpty()) {
+                addHierarchyEntries(result, typeFqn, currentTypeList, inExtends ? "EXTENDS" : "IMPLEMENTS", importMap, packagePrefix);
+            }
+            i = nameIdx;
+        }
+        return result;
+    }
+
+    private static void addHierarchyEntries(
+            List<com.hlag.sourceviewer.domain.model.source.TypeHierarchyEntry> out,
+            String subtypeFqn, List<String> supertypes, String relationship,
+            Map<String, String> importMap, String packagePrefix) {
+        for (String simpleName : supertypes) {
+            String superFqn = resolveTypeFqn(simpleName, importMap, packagePrefix);
+            out.add(new com.hlag.sourceviewer.domain.model.source.TypeHierarchyEntry(
+                    subtypeFqn, superFqn, relationship));
+        }
+    }
+
+    private static String buildTypeFqn(String packagePrefix, List<String> typeStack, String simpleName) {
+        if (typeStack.isEmpty()) return packagePrefix + simpleName;
+        return packagePrefix + String.join(".", typeStack) + "." + simpleName;
+    }
+
+    private static String resolveTypeFqn(String name, Map<String, String> importMap, String packagePrefix) {
+        if (name.contains(".")) return name; // already qualified
+        String fromImport = importMap.get(name);
+        if (fromImport != null) return fromImport;
+        // Common java.lang types
+        String javaLang = javaLangFqn(name);
+        if (javaLang != null) return javaLang;
+        return packagePrefix + name;
+    }
+
+    private static String javaLangFqn(String name) {
+        return switch (name) {
+            case "Object"     -> "java.lang.Object";
+            case "String"     -> "java.lang.String";
+            case "Number"     -> "java.lang.Number";
+            case "Comparable" -> "java.lang.Comparable";
+            case "Iterable"   -> "java.lang.Iterable";
+            case "Runnable"   -> "java.lang.Runnable";
+            case "Cloneable"  -> "java.lang.Cloneable";
+            case "Serializable" -> "java.io.Serializable";
+            default           -> null;
+        };
+    }
+
+    private static Map<String, String> buildImportMap(List<ExtractedToken> tokens) {
+        Map<String, String> importMap = new HashMap<>();
+        for (int i = 0; i < tokens.size(); i++) {
+            ExtractedToken tok = tokens.get(i);
+            if (!tok.is(KEYWORD, "import")) continue;
+
+            StringBuilder fqn = new StringBuilder();
+            int j = i + 1;
+            while (j < tokens.size()) {
+                ExtractedToken t = tokens.get(j++);
+                if (t.is(WHITESPACE)) continue;
+                if (t.is(KEYWORD, "static")) continue;
+                if (t.is(IDENTIFIER)) fqn.append(t.text());
+                else if (t.is(SEPARATOR, ".")) fqn.append('.');
+                else if (t.is(OPERATOR, "*")) break;
+                else if (t.is(SEPARATOR, ";")) break;
+                else break;
+            }
+            String fqnStr = fqn.toString();
+            if (fqnStr.contains(".")) {
+                String simpleName = fqnStr.substring(fqnStr.lastIndexOf('.') + 1);
+                importMap.put(simpleName, fqnStr);
+            }
+        }
+        return importMap;
+    }
+
+    private static int nextNonWhitespace(List<ExtractedToken> tokens, int from) {
+        for (int i = from; i < tokens.size(); i++) {
+            if (!tokens.get(i).is(WHITESPACE)) return i;
+        }
+        return -1;
     }
 
     /** Closes the JDTLS session held by the context (if any). */
@@ -421,6 +966,10 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
     // -- LSP reference resolution (definition) ---------------------------------
 
+    private static Position toPosition(ExtractedToken token) {
+        return new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
+    }
+
     private List<PendingReference> resolveReferencesViaDefinition(
             String fileUri,
             List<ExtractedToken> tokens,
@@ -530,9 +1079,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                         ? formatHoverContents(hover) : null;
                 if (hoverText != null && !hoverText.isBlank()) {
                     withContent++;
-                    enriched.add(new ExtractedToken(token.line(), token.columnStart(), token.columnEnd(),
-                            token.text(), token.kind(), token.qualifiedName(), token.symbolId(),
-                            hoverText, token.groupId()));
+                    enriched.add(token);
                 } else {
                     emptyOrNull++;
                     enriched.add(token);
@@ -607,9 +1154,9 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                     }
                 }
                 final var fqn = fqnBuilder.toString();
-                // Emit tokens from startIndex to endIndex with groupId+fqn
+                // Emit tokens from startIndex to endIndex with groupId only (FQN stored in token_detail)
                 tokens.subList(startIndex, endIndex).forEach(importToken ->
-                    result.add(importToken.withQualifiedName(fqn).withGroupId(groupId))
+                    result.add(importToken.withGroupId(groupId))
                 );
                 currentIndex = endIndex;
             }

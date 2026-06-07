@@ -2,16 +2,23 @@ package com.hlag.sourceviewer.domain.model.source;
 
 /**
  * A single lexical token extracted from a source file, optionally enriched with
- * semantic information when the token is a symbol declaration or reference.
+ * semantic information during indexing.
  *
  * <p>Field names are intentionally short to reduce JSON payload size before gzip
  * compression: {@code l}=line, {@code cs}=columnStart, {@code ce}=columnEnd,
- * {@code t}=text, {@code k}=kind, {@code q}=qualifiedName, {@code s}=symbolId,
- * {@code h}=hoverText, {@code g}=groupId.</p>
+ * {@code t}=text, {@code k}=kind, {@code g}=groupId, {@code hg}=highlightGroupId,
+ * {@code d}=hasDetails.</p>
  *
  * <p>{@code groupId} is set on all tokens that belong to the same import/include
- * statement. All tokens in a group share the same {@code qualifiedName} (the full
- * import FQN) so the frontend can treat them as a single navigable link.</p>
+ * statement. The frontend uses this for hover-underline grouping.</p>
+ *
+ * <p>{@code highlightGroupId} groups tokens that reference the same symbol within
+ * a file. Clicking any token with an {@code hg} value highlights all tokens sharing
+ * that value. Groups are pre-computed during indexing from definition locations.</p>
+ *
+ * <p>{@code hasDetails} is true when a {@code token_detail} row exists for this
+ * position. The frontend uses it to decide whether to show the token as clickable
+ * and to fire a REST call for the rich detail panel.</p>
  */
 public record ExtractedToken(
         int line,
@@ -19,25 +26,20 @@ public record ExtractedToken(
         int columnEnd,
         String text,
         TokenKind kind,
-        String qualifiedName,
-        Long symbolId,
-        String hoverText,
-        Integer groupId
+        Integer groupId,
+        Integer highlightGroupId,
+        boolean hasDetails
 ) {
-    public ExtractedToken withQualifiedName(String qualifiedName) {
-        return new ExtractedToken(line, columnStart, columnEnd, text, kind, qualifiedName, symbolId, hoverText, groupId);
-    }
-
-    public ExtractedToken withSymbolId(Long symbolId) {
-        return new ExtractedToken(line, columnStart, columnEnd, text, kind, qualifiedName, symbolId, hoverText, groupId);
-    }
-
-    public ExtractedToken withHoverText(String hoverText) {
-        return new ExtractedToken(line, columnStart, columnEnd, text, kind, qualifiedName, symbolId, hoverText, groupId);
-    }
-
     public ExtractedToken withGroupId(Integer groupId) {
-        return new ExtractedToken(line, columnStart, columnEnd, text, kind, qualifiedName, symbolId, hoverText, groupId);
+        return new ExtractedToken(line, columnStart, columnEnd, text, kind, groupId, highlightGroupId, hasDetails);
+    }
+
+    public ExtractedToken withHighlightGroupId(Integer highlightGroupId) {
+        return new ExtractedToken(line, columnStart, columnEnd, text, kind, groupId, highlightGroupId, hasDetails);
+    }
+
+    public ExtractedToken withHasDetails(boolean hasDetails) {
+        return new ExtractedToken(line, columnStart, columnEnd, text, kind, groupId, highlightGroupId, hasDetails);
     }
 
     public boolean is(TokenKind kind, String text) {

@@ -31,7 +31,7 @@
                 tokenColorClass(token.k),
                 isTokenClickable(token) ? 'cursor-pointer' : '',
                 isGroupHovered(token) ? 'underline text-indigo-600' : (isTokenClickable(token) ? 'hover:underline hover:text-indigo-600' : ''),
-                isSelectedToken(token) ? 'bg-yellow-200 rounded outline outline-1 outline-yellow-400' : '',
+                isSelectedToken(token) ? 'bg-yellow-200 rounded outline outline-1 outline-yellow-400' : (isHighlightGroupMember(token) ? 'bg-yellow-100 rounded' : ''),
               ]"
               @mouseenter="token.g != null ? hoveredGroup = token.g : undefined"
               @mouseleave="token.g != null ? hoveredGroup = null : undefined"
@@ -118,10 +118,10 @@
           </dl>
         </div>
 
-        <!-- Symbol info box -->
+        <!-- Token detail box -->
         <div v-if="selectedToken" class="rounded-xl border border-indigo-100 bg-indigo-50 shadow-sm p-4">
           <div class="flex items-center justify-between mb-3">
-            <h3 class="text-xs font-semibold text-indigo-600 uppercase tracking-wider">Symbol</h3>
+            <h3 class="text-xs font-semibold text-indigo-600 uppercase tracking-wider">Token</h3>
             <button
               @click="clearSelection"
               class="text-indigo-400 hover:text-indigo-600"
@@ -133,106 +133,160 @@
             </button>
           </div>
 
-          <div v-if="symbolLoading" class="flex items-center gap-2 text-xs text-indigo-400 py-1">
+          <!-- Loading spinner -->
+          <div v-if="detailLoading" class="flex items-center gap-2 text-xs text-indigo-400 py-1">
             <svg class="animate-spin w-3 h-3" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
             </svg>
-            Resolving symbol…
+            Loading…
           </div>
 
-          <template v-else-if="symbolInfo">
-            <div class="mb-3">
+          <!-- TYPE_REF / TYPE_DECL -->
+          <template v-else-if="typeDetail">
+            <div class="mb-2">
               <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-200 text-indigo-800">
-                {{ formatKind(symbolInfo.kind) }}
+                {{ typeDetail.kind }}
               </span>
             </div>
             <dl class="space-y-2 text-sm">
-              <InfoRow label="Name" :value="symbolInfo.simpleName" mono />
-              <InfoRow label="Qualified name" :value="symbolInfo.qualifiedName" mono />
-              <InfoRow v-if="symbolInfo.signature" label="Signature" :value="symbolInfo.signature" mono />
-              <InfoRow v-if="selectedToken?.h" label="Type info" :value="selectedToken.h" mono />
+              <InfoRow label="Name" :value="typeDetail.qualifiedName" mono />
+              <InfoRow v-if="typeDetail.superclassFqn" label="Extends" :value="typeDetail.superclassFqn" mono />
+              <div v-if="typeDetail.implementedInterfaces?.length">
+                <dt class="text-xs text-gray-400 mb-0.5">Implements</dt>
+                <dd class="font-mono text-xs text-gray-700 space-y-0.5">
+                  <div v-for="iface in typeDetail.implementedInterfaces" :key="iface">{{ iface }}</div>
+                </dd>
+              </div>
+              <div v-if="typeDetail.knownSubtypes?.length">
+                <dt class="text-xs text-gray-400 mb-0.5">Known subtypes</dt>
+                <dd class="font-mono text-xs text-gray-700 space-y-0.5">
+                  <div v-for="sub in typeDetail.knownSubtypes" :key="sub.qualifiedName">
+                    {{ sub.qualifiedName }}
+                    <span class="text-gray-400 ml-1">({{ sub.relationshipKind.toLowerCase() }})</span>
+                  </div>
+                </dd>
+              </div>
               <div v-if="javadocUrl">
                 <dt class="text-xs text-gray-400 mb-0.5">Javadoc</dt>
-                <dd>
-                  <a :href="javadocUrl" target="_blank" rel="noopener noreferrer"
-                     class="text-indigo-600 hover:text-indigo-800 text-xs hover:underline inline-flex items-center gap-1">
-                    Open Javadoc
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                    </svg>
-                  </a>
-                </dd>
-              </div>
-              <div v-if="symbolInfo.filePath">
-                <dt class="text-xs text-gray-400 mb-0.5">Defined in</dt>
-                <dd>
-                  <RouterLink
-                    :to="`/file/${encodeURIComponent(symbolInfo.repositoryName!)}/${symbolInfo.filePath}`"
-                    class="text-indigo-600 hover:text-indigo-800 font-mono text-xs break-all hover:underline"
-                  >{{ symbolInfo.filePath }}</RouterLink>
-                </dd>
+                <dd><a :href="javadocUrl" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline text-xs inline-flex items-center gap-1">Open Javadoc <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a></dd>
               </div>
             </dl>
-            <div class="mt-3 pt-3 border-t border-indigo-100 text-xs text-indigo-400">
-              Line {{ selectedToken.l }}, col {{ selectedToken.cs }}–{{ selectedToken.ce }}
+          </template>
+
+          <!-- VARIABLE -->
+          <template v-else-if="variableDetail">
+            <div class="mb-2">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-200 text-indigo-800">
+                {{ variableDetail.variableKind.charAt(0) + variableDetail.variableKind.slice(1).toLowerCase() }}
+              </span>
+            </div>
+            <dl class="space-y-2 text-sm">
+              <InfoRow label="Name" :value="variableDetail.name" mono />
+              <div v-if="variableDetail.typeFqn">
+                <dt class="text-xs text-gray-400 mb-0.5">Type</dt>
+                <dd class="font-mono text-xs break-all">
+                  <RouterLink
+                    v-if="variableDetail.typeRepositoryName && variableDetail.typeFilePath"
+                    :to="`/file/${encodeURIComponent(variableDetail.typeRepositoryName)}/${variableDetail.typeFilePath}`"
+                    class="text-indigo-600 hover:underline"
+                  >{{ variableDetail.typeFqn }}</RouterLink>
+                  <span v-else class="text-gray-700">{{ variableDetail.typeFqn }}</span>
+                </dd>
+              </div>
+              <div v-if="javadocUrl">
+                <dt class="text-xs text-gray-400 mb-0.5">Type Javadoc</dt>
+                <dd><a :href="javadocUrl" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline text-xs inline-flex items-center gap-1">Open Javadoc <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a></dd>
+              </div>
+            </dl>
+          </template>
+
+          <!-- METHOD_CALL / METHOD_DECL -->
+          <template v-else-if="methodDetail">
+            <div class="mb-2">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-200 text-indigo-800">
+                {{ methodDetail.detailType === 'METHOD_DECL' ? 'Method declaration' : 'Method call' }}
+              </span>
+            </div>
+            <dl class="space-y-2 text-sm">
+              <InfoRow label="Name" :value="methodDetail.name" mono />
+              <InfoRow v-if="methodDetail.declaringClass" label="Class" :value="methodDetail.declaringClass" mono />
+              <InfoRow v-if="methodDetail.returnType" label="Returns" :value="methodDetail.returnType" mono />
+              <div v-if="methodDetail.parameters?.length">
+                <dt class="text-xs text-gray-400 mb-0.5">Parameters</dt>
+                <dd class="font-mono text-xs text-gray-700 space-y-0.5">
+                  <div v-for="p in methodDetail.parameters" :key="p.name">
+                    <span class="text-purple-600">{{ p.type }}</span>
+                    <span class="ml-1">{{ p.name }}</span>
+                  </div>
+                </dd>
+              </div>
+              <div v-if="javadocUrl">
+                <dt class="text-xs text-gray-400 mb-0.5">Javadoc</dt>
+                <dd><a :href="javadocUrl" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline text-xs inline-flex items-center gap-1">Open Javadoc <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a></dd>
+              </div>
+            </dl>
+            <div v-if="methodDetail.overloads?.length" class="mt-3 pt-3 border-t border-indigo-100">
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Overloads</p>
+              <ul class="space-y-1">
+                <li v-for="o in methodDetail.overloads" :key="o" class="font-mono text-xs text-gray-700">{{ o }}</li>
+              </ul>
+            </div>
+            <div v-if="methodDetail.implementations?.length" class="mt-3 pt-3 border-t border-indigo-100">
+              <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Implementations</p>
+              <ul class="space-y-2">
+                <li v-for="impl in methodDetail.implementations" :key="impl.qualifiedName" class="text-xs">
+                  <RouterLink
+                    v-if="impl.repositoryName && impl.filePath"
+                    :to="`/file/${encodeURIComponent(impl.repositoryName)}/${impl.filePath}`"
+                    class="text-indigo-600 hover:underline font-mono break-all"
+                  >{{ impl.filePath }}</RouterLink>
+                  <span v-else class="font-mono text-gray-600 break-all">{{ impl.qualifiedName }}</span>
+                  <div v-if="impl.repositoryName" class="text-gray-400 mt-0.5">{{ impl.repositoryName }}</div>
+                </li>
+              </ul>
             </div>
           </template>
 
-          <template v-else>
+          <!-- ANNOTATION -->
+          <template v-else-if="annotationDetail">
+            <div class="mb-2">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-200 text-indigo-800">Annotation</span>
+            </div>
+            <dl class="space-y-2 text-sm">
+              <InfoRow label="Name" :value="annotationDetail.qualifiedName" mono />
+              <div v-if="javadocUrl">
+                <dt class="text-xs text-gray-400 mb-0.5">Javadoc</dt>
+                <dd><a :href="javadocUrl" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline text-xs inline-flex items-center gap-1">Open Javadoc <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a></dd>
+              </div>
+            </dl>
+          </template>
+
+          <!-- KEYWORD -->
+          <template v-else-if="keywordDetail">
+            <div class="mb-2">
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-200 text-blue-800">Keyword</span>
+            </div>
+            <dl class="space-y-2 text-sm">
+              <InfoRow label="Keyword" :value="keywordDetail.keyword" mono />
+              <div v-if="keywordDetail.description">
+                <dt class="text-xs text-gray-400 mb-0.5">Description</dt>
+                <dd class="text-xs text-gray-700">{{ keywordDetail.description }}</dd>
+              </div>
+              <div v-else class="text-xs text-gray-400 italic">No description yet.</div>
+            </dl>
+          </template>
+
+          <!-- Fallback: no detail loaded -->
+          <template v-else-if="!detailLoading">
             <dl class="space-y-2 text-sm">
               <InfoRow label="Text" :value="selectedToken.t" mono />
-              <InfoRow v-if="selectedToken.q" label="Qualified name" :value="selectedToken.q" mono />
-              <InfoRow v-if="selectedToken.h" label="Type info" :value="selectedToken.h" mono />
-              <div v-if="javadocUrl">
-                <dt class="text-xs text-gray-400 mb-0.5">Javadoc</dt>
-                <dd>
-                  <a :href="javadocUrl" target="_blank" rel="noopener noreferrer"
-                     class="text-indigo-600 hover:text-indigo-800 text-xs hover:underline inline-flex items-center gap-1">
-                    Open Javadoc
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                    </svg>
-                  </a>
-                </dd>
-              </div>
             </dl>
-            <div class="mt-2 text-xs text-indigo-400">
-              Line {{ selectedToken.l }}, col {{ selectedToken.cs }}–{{ selectedToken.ce }}
-            </div>
           </template>
-        </div>
 
-        <!-- References box -->
-        <div v-if="selectedToken?.s != null" class="rounded-xl border border-gray-200 bg-white shadow-sm p-4">
-          <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">References</h3>
-          <div v-if="referencesLoading" class="flex items-center gap-2 text-xs text-gray-400 py-2">
-            <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-            </svg>
-            Loading references…
+          <div class="mt-3 pt-3 border-t border-indigo-100 text-xs text-indigo-400">
+            Line {{ selectedToken.l }}, col {{ selectedToken.cs }}–{{ selectedToken.ce }}
           </div>
-          <div v-else-if="referencesError" class="text-xs text-red-600">{{ referencesError }}</div>
-          <div v-else-if="references.length === 0" class="text-xs text-gray-400 italic">No references found.</div>
-          <ul v-else class="space-y-2">
-            <li
-              v-for="ref in references"
-              :key="ref.referenceId"
-              class="text-xs"
-            >
-              <RouterLink
-                :to="ref.repositoryName && ref.filePath
-                  ? `/file/${encodeURIComponent(ref.repositoryName)}/${ref.filePath}`
-                  : { name: 'search' }"
-                class="text-indigo-600 hover:text-indigo-800 font-mono break-all hover:underline"
-              >{{ ref.filePath ?? `File #${ref.fileId}` }}</RouterLink>
-              <div class="text-gray-400 mt-0.5">
-                <span class="text-gray-600">{{ ref.kind.replace(/_/g, ' ') }}</span>
-                <span v-if="ref.line != null"> · line {{ ref.line }}</span>
-              </div>
-            </li>
-          </ul>
         </div>
 
       </div>
@@ -244,9 +298,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import type { FileInfo, Token, TokenKind, SymbolInfo, SymbolReference } from '../types/file'
+import type { FileInfo, Token, TokenKind, TokenDetail } from '../types/file'
 import type { JavadocProvider } from '../types/javadoc-provider'
-import { getFileInfoByPath, getFileContent, getTokenStream, getSymbol, getSymbolReferences } from '../api/files'
+import { getFileInfoByPath, getFileContent, getTokenStream, getTokenDetail } from '../api/files'
 import { listJavadocProviders } from '../api/javadoc'
 import { buildJavadocUrl } from '../utils/javadocUrl'
 import InfoRow from '../components/InfoRow.vue'
@@ -284,13 +338,24 @@ const rawContent = ref<string | null>(null)
 const loading = ref(true)
 const error = ref('')
 const selectedToken = ref<Token | null>(null)
-const symbolInfo = ref<SymbolInfo | null>(null)
-const symbolLoading = ref(false)
-const references = ref<SymbolReference[]>([])
-const referencesLoading = ref(false)
-const referencesError = ref('')
+const tokenDetail = ref<TokenDetail | null>(null)
+const detailLoading = ref(false)
 const javadocProviders = ref<JavadocProvider[]>([])
 const hoveredGroup = ref<number | null>(null)
+
+// Typed helpers to narrow the discriminated union in templates
+const typeDetail = computed(() =>
+  (tokenDetail.value?.detailType === 'TYPE_REF' || tokenDetail.value?.detailType === 'TYPE_DECL')
+    ? tokenDetail.value : null)
+const variableDetail = computed(() =>
+  tokenDetail.value?.detailType === 'VARIABLE' ? tokenDetail.value : null)
+const methodDetail = computed(() =>
+  (tokenDetail.value?.detailType === 'METHOD_CALL' || tokenDetail.value?.detailType === 'METHOD_DECL')
+    ? tokenDetail.value : null)
+const annotationDetail = computed(() =>
+  tokenDetail.value?.detailType === 'ANNOTATION' ? tokenDetail.value : null)
+const keywordDetail = computed(() =>
+  tokenDetail.value?.detailType === 'KEYWORD' ? tokenDetail.value : null)
 
 // ── Data loading ─────────────────────────────────────────────────────
 
@@ -328,38 +393,19 @@ watch([repoName, filePath], ([newRepo, newPath]) => load(newRepo, newPath))
 
 function clearSelection() {
   selectedToken.value = null
-  symbolInfo.value = null
-  references.value = []
-  referencesError.value = ''
+  tokenDetail.value = null
 }
 
 async function selectToken(token: Token) {
   selectedToken.value = token
-  symbolInfo.value = null
-  references.value = []
-  referencesError.value = ''
-
-  if (token.s != null) {
-    symbolLoading.value = true
-    referencesLoading.value = true
-
-    const [symbolResult, refsResult] = await Promise.allSettled([
-      getSymbol(token.s),
-      getSymbolReferences(token.s),
-    ])
-
-    symbolLoading.value = false
-    referencesLoading.value = false
-
-    if (symbolResult.status === 'fulfilled') {
-      symbolInfo.value = symbolResult.value
-    }
-    if (refsResult.status === 'fulfilled') {
-      references.value = refsResult.value
-    } else {
-      referencesError.value = refsResult.reason instanceof Error
-        ? refsResult.reason.message : 'Failed to load references'
-    }
+  tokenDetail.value = null
+  detailLoading.value = true
+  try {
+    tokenDetail.value = await getTokenDetail(fileInfo.value!.fileId, token.l, token.cs)
+  } catch {
+    // detail not available — panel shows bare position info
+  } finally {
+    detailLoading.value = false
   }
 }
 
@@ -439,7 +485,7 @@ function tokenColorClass(kind: TokenKind): string {
 }
 
 function isTokenClickable(token: Token): boolean {
-  return token.k === 'IDENTIFIER' && (token.s != null || token.q != null)
+  return token.d === true
 }
 
 function isGroupHovered(token: Token): boolean {
@@ -450,6 +496,12 @@ function isSelectedToken(token: Token): boolean {
   return selectedToken.value !== null
     && token.l === selectedToken.value.l
     && token.cs === selectedToken.value.cs
+}
+
+function isHighlightGroupMember(token: Token): boolean {
+  return selectedToken.value?.hg != null
+    && token.hg === selectedToken.value.hg
+    && !isSelectedToken(token)
 }
 
 const KIND_LABELS: Record<string, string> = {
@@ -484,16 +536,18 @@ function formatFileSize(bytes: number): string {
 }
 
 const javadocUrl = computed<string | null>(() => {
-  if (symbolInfo.value) {
-    return buildJavadocUrl(
-      symbolInfo.value.qualifiedName,
-      symbolInfo.value.kind,
-      symbolInfo.value.signature,
-      javadocProviders.value
-    )
+  const d = tokenDetail.value
+  if (!d) return null
+  if (d.detailType === 'TYPE_REF' || d.detailType === 'TYPE_DECL' || d.detailType === 'ANNOTATION') {
+    return buildJavadocUrl(d.qualifiedName, 'CLASS', null, javadocProviders.value)
   }
-  if (selectedToken.value?.q) {
-    return buildJavadocUrl(selectedToken.value.q, 'CLASS', null, javadocProviders.value)
+  if (d.detailType === 'METHOD_CALL' || d.detailType === 'METHOD_DECL') {
+    const fqn = d.declaringClass + '.' + d.name
+    const sig = d.parameters?.map(p => p.type).join(', ') ?? null
+    return buildJavadocUrl(fqn, 'METHOD', sig ? `(${sig})` : null, javadocProviders.value)
+  }
+  if (d.detailType === 'VARIABLE') {
+    return buildJavadocUrl(d.typeFqn, 'CLASS', null, javadocProviders.value)
   }
   return null
 })

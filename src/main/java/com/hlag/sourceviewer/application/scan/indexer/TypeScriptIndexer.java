@@ -96,7 +96,7 @@ public class TypeScriptIndexer extends AbstractAntlr4Indexer {
     public ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context) {
         ParsedFile parsedFile = super.indexFile(fileId, path, content, context);
         List<ExtractedToken> grouped = assignImportGroups(parsedFile.tokens());
-        return new ParsedFile(parsedFile.declarations(), parsedFile.references(), grouped);
+        return parsedFile.withTokens(grouped);
     }
 
     /**
@@ -143,8 +143,7 @@ public class TypeScriptIndexer extends AbstractAntlr4Indexer {
                 ExtractedToken t = tokens.get(k);
                 if (t.kind() == IDENTIFIER || t.kind() == STRING_LITERAL) {
                     result.add(new ExtractedToken(t.line(), t.columnStart(), t.columnEnd(),
-                            t.text(), t.kind(), fqn.isEmpty() ? null : fqn,
-                            null, t.hoverText(), groupId));
+                            t.text(), t.kind(), groupId, null, false));
                 } else {
                     result.add(t);
                 }

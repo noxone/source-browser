@@ -30,7 +30,9 @@ import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TokenDetailRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.TokenStreamRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TypeHierarchyRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.inject.Inject;
@@ -90,6 +92,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
     private final ManageAppSettingsUseCase manageAppSettings;
     private final LanguageIndexerRegistry languageIndexerRegistry;
     private final TokenStreamRepository tokenStreamRepository;
+    private final TokenDetailRepository tokenDetailRepository;
+    private final TypeHierarchyRepository typeHierarchyRepository;
 
     @Inject
     public ExecuteScanJobService(
@@ -103,7 +107,9 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             SymbolReferenceRepository symbolReferenceRepository,
             ManageAppSettingsUseCase manageAppSettings,
             LanguageIndexerRegistry languageIndexerRegistry,
-            TokenStreamRepository tokenStreamRepository) {
+            TokenStreamRepository tokenStreamRepository,
+            TokenDetailRepository tokenDetailRepository,
+            TypeHierarchyRepository typeHierarchyRepository) {
         this.scanJobRepository = scanJobRepository;
         this.repositoryStore = repositoryStore;
         this.gitAccess = gitAccess;
@@ -115,6 +121,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         this.manageAppSettings = manageAppSettings;
         this.languageIndexerRegistry = languageIndexerRegistry;
         this.tokenStreamRepository = tokenStreamRepository;
+        this.tokenDetailRepository = tokenDetailRepository;
+        this.typeHierarchyRepository = typeHierarchyRepository;
     }
 
     /**
@@ -184,6 +192,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 symbolRepository.deleteUnpublishedByScanJob(scanJobId);
                 documentRepository.deleteUnpublishedByScanJob(scanJobId);
                 tokenStreamRepository.deleteUnpublishedByScanJob(scanJobId);
+                tokenDetailRepository.deleteUnpublishedByScanJob(scanJobId);
+                typeHierarchyRepository.deleteUnpublishedByScanJob(scanJobId);
             });
         } catch (Exception e) {
             logger.error("Failed to clean up unpublished data for scan job {}", identifier.value(), e);
@@ -431,6 +441,13 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
 
     private void storeSymbols(ParsedFile parsed, FileIdentifier fileId, Long scanJobId,
                                Repository repository, BranchName branch) {
+        if (!parsed.tokenDetails().isEmpty()) {
+            tokenDetailRepository.insertAllUnpublished(parsed.tokenDetails(), scanJobId);
+        }
+        if (!parsed.hierarchyEntries().isEmpty()) {
+            typeHierarchyRepository.insertAllUnpublished(parsed.hierarchyEntries(), scanJobId);
+        }
+
         parsed.declarations().forEach(symbol -> symbolRepository.insertUnpublished(symbol, scanJobId));
 
         for (var ref : parsed.references()) {
@@ -475,54 +492,26 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             return;
         }
 
-        // Build lookup: "line:col" → qualified name + symbol ID, from already-persisted declarations.
-        // Symbol IDs are available because insertUnpublished flushes the IDENTITY-generated ID back.
-        Map<String, String> declarationQn = new HashMap<>();
-        Map<String, Long> declarationId = new HashMap<>();
-        for (Symbol sym : parsed.declarations()) {
-            sym.lineStart().ifPresent(line ->
-                sym.columnStart().ifPresent(col -> {
-                    String key = line.value() + ":" + col.value();
-                    declarationQn.put(key, sym.qualifiedName().value());
-                    if (sym.identifier() != null) {
-                        declarationId.put(key, sym.identifier().value());
-                    }
-                }));
+        // Build lookup: "line:col" → highlight group ID, from pre-computed groups.
+        Map<String, Integer> highlightGroups = parsed.highlightGroups();
+
+        // Build set of positions that have a token_detail entry (= clickable tokens).
+        java.util.Set<String> detailPositions = new java.util.HashSet<>();
+        for (com.hlag.sourceviewer.domain.model.source.TokenDetail td : parsed.tokenDetails()) {
+            detailPositions.add(td.line() + ":" + td.columnStart());
         }
 
-        // Build lookup from unpublished references for this scan job (fallback: published).
-        Map<String, SymbolReference> refMap = new HashMap<>();
-        for (SymbolReference ref : symbolReferenceRepository.findByFileForScan(fileId, scanJobId)) {
-            ref.line().ifPresent(line ->
-                ref.columnStart().ifPresent(col ->
-                    refMap.put(line.value() + ":" + col.value(), ref)));
-        }
-
-        // Enrich IDENTIFIER tokens with semantic information where available.
-        // Tokens that belong to an import group (groupId != null) already carry a qualifiedName
-        // set by the indexer; preserve it unless the DB provides a more precise symId.
+        // Enrich tokens with highlight group IDs and hasDetails flag.
         var enriched = new ArrayList<ExtractedToken>(parsed.tokens().size());
         for (ExtractedToken token : parsed.tokens()) {
-            if (token.kind() != ExtractedToken.TokenKind.IDENTIFIER) {
-                enriched.add(token);
-                continue;
-            }
             String key = token.line() + ":" + token.columnStart();
-            String qn = declarationQn.getOrDefault(key, token.qualifiedName()); // keep import group FQN
-            Long symId = declarationId.get(key);
-            if (declarationQn.get(key) == null) {
-                SymbolReference ref = refMap.get(key);
-                if (ref != null) {
-                    symId = ref.symbolIdentifier().map(SymbolIdentifier::value).orElse(null);
-                    // Use the FQN stored on the reference (always populated when LSP resolved it)
-                    String refQn = ref.qualifiedName().map(QualifiedName::value)
-                            .orElse(ref.unresolvedName().map(SimpleName::value).orElse(null));
-                    if (refQn != null) qn = refQn;
-                }
+            Integer hg = highlightGroups.get(key);
+            boolean hasDetails = detailPositions.contains(key);
+            if (hg != null || hasDetails) {
+                enriched.add(token.withHighlightGroupId(hg).withHasDetails(hasDetails));
+            } else {
+                enriched.add(token);
             }
-            enriched.add(new ExtractedToken(
-                    token.line(), token.columnStart(), token.columnEnd(),
-                    token.text(), token.kind(), qn, symId, token.hoverText(), token.groupId()));
         }
 
         tokenStreamRepository.storeUnpublished(fileId, enriched, scanJobId);
@@ -538,6 +527,10 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         documentRepository.deleteSupersededDocuments(scanJobId);
         tokenStreamRepository.publishByScanJob(scanJobId);
         tokenStreamRepository.deleteSupersededByScanJob(scanJobId);
+        tokenDetailRepository.publishByScanJob(scanJobId);
+        tokenDetailRepository.deleteSupersededByScanJob(scanJobId);
+        typeHierarchyRepository.publishByScanJob(scanJobId);
+        typeHierarchyRepository.deleteSupersededByScanJob(scanJobId);
         repository.setLastCommitSha(targetSha);
         repository.setLastScannedAt(Instant.now());
         repositoryStore.update(repository);
