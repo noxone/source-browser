@@ -152,19 +152,51 @@
               </span>
             </div>
             <dl class="space-y-2 text-sm">
-              <InfoRow label="Name" :value="typeDetail.qualifiedName" mono />
-              <InfoRow v-if="typeDetail.superclassFqn" label="Extends" :value="typeDetail.superclassFqn" mono />
+              <div>
+                <dt class="text-xs text-gray-400 mb-0.5">Name</dt>
+                <dd class="font-mono text-xs break-all">
+                  <RouterLink
+                    v-if="typeDetail.repositoryName && typeDetail.filePath"
+                    :to="fileLineRoute(typeDetail.repositoryName, typeDetail.filePath, typeDetail.lineStart)"
+                    class="text-indigo-600 hover:underline"
+                  >{{ typeDetail.qualifiedName }}</RouterLink>
+                  <span v-else class="text-gray-700">{{ typeDetail.qualifiedName }}</span>
+                </dd>
+              </div>
+              <div v-if="typeDetail.superclassFqn">
+                <dt class="text-xs text-gray-400 mb-0.5">Extends</dt>
+                <dd class="font-mono text-xs break-all">
+                  <RouterLink
+                    v-if="typeDetail.superclassRepositoryName && typeDetail.superclassFilePath"
+                    :to="fileLineRoute(typeDetail.superclassRepositoryName, typeDetail.superclassFilePath, typeDetail.superclassLineStart)"
+                    class="text-indigo-600 hover:underline"
+                  >{{ typeDetail.superclassFqn }}</RouterLink>
+                  <span v-else class="text-gray-700">{{ typeDetail.superclassFqn }}</span>
+                </dd>
+              </div>
               <div v-if="typeDetail.implementedInterfaces?.length">
                 <dt class="text-xs text-gray-400 mb-0.5">Implements</dt>
-                <dd class="font-mono text-xs text-gray-700 space-y-0.5">
-                  <div v-for="iface in typeDetail.implementedInterfaces" :key="iface">{{ iface }}</div>
+                <dd class="font-mono text-xs space-y-0.5">
+                  <div v-for="iface in typeDetail.implementedInterfaces" :key="iface.qualifiedName" class="break-all">
+                    <RouterLink
+                      v-if="iface.repositoryName && iface.filePath"
+                      :to="fileLineRoute(iface.repositoryName, iface.filePath, iface.lineStart)"
+                      class="text-indigo-600 hover:underline"
+                    >{{ iface.qualifiedName }}</RouterLink>
+                    <span v-else class="text-gray-700">{{ iface.qualifiedName }}</span>
+                  </div>
                 </dd>
               </div>
               <div v-if="typeDetail.knownSubtypes?.length">
                 <dt class="text-xs text-gray-400 mb-0.5">Known subtypes</dt>
-                <dd class="font-mono text-xs text-gray-700 space-y-0.5">
-                  <div v-for="sub in typeDetail.knownSubtypes" :key="sub.qualifiedName">
-                    {{ sub.qualifiedName }}
+                <dd class="font-mono text-xs space-y-0.5">
+                  <div v-for="sub in typeDetail.knownSubtypes" :key="sub.qualifiedName" class="break-all">
+                    <RouterLink
+                      v-if="sub.repositoryName && sub.filePath"
+                      :to="fileLineRoute(sub.repositoryName, sub.filePath, sub.lineStart)"
+                      class="text-indigo-600 hover:underline"
+                    >{{ sub.qualifiedName }}</RouterLink>
+                    <span v-else class="text-gray-700">{{ sub.qualifiedName }}</span>
                     <span class="text-gray-400 ml-1">({{ sub.relationshipKind.toLowerCase() }})</span>
                   </div>
                 </dd>

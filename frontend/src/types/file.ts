@@ -55,8 +55,16 @@ export interface MethodImpl {
   lineStart?: number
 }
 
+export interface TypeLocation {
+  qualifiedName: string
+  fileId?: number
+  filePath?: string
+  repositoryName?: string
+  lineStart?: number
+}
+
 export type TokenDetail =
-  | { detailType: 'TYPE_REF' | 'TYPE_DECL'; qualifiedName: string; kind: string; superclassFqn?: string; implementedInterfaces?: string[]; knownSubtypes?: Array<{ qualifiedName: string; relationshipKind: string }> }
+  | { detailType: 'TYPE_REF' | 'TYPE_DECL'; qualifiedName: string; kind: string; fileId?: number; filePath?: string; repositoryName?: string; lineStart?: number; superclassFqn?: string; superclassFileId?: number; superclassFilePath?: string; superclassRepositoryName?: string; superclassLineStart?: number; implementedInterfaces?: TypeLocation[]; knownSubtypes?: Array<TypeLocation & { relationshipKind: string }> }
   | { detailType: 'VARIABLE'; name: string; variableKind: string; typeFqn: string | null; typeFileId?: number; typeFilePath?: string; typeRepositoryName?: string; typeLineStart?: number }
   | { detailType: 'METHOD_CALL' | 'METHOD_DECL'; name: string; declaringClass: string; returnType: string; parameters: MethodParam[]; overloads: MethodOverload[]; implementations: MethodImpl[]; isConstructor?: boolean }
   | { detailType: 'ANNOTATION'; qualifiedName: string }

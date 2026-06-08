@@ -73,6 +73,7 @@ public class GetTokenDetailService implements GetTokenDetailUseCase {
                 String qualifiedName = (String) response.get("qualifiedName");
                 if (qualifiedName != null) {
                     enrichTypeHierarchy(qualifiedName, response);
+                    populateTypeLocation(qualifiedName, response);
                 }
             } else if ("VARIABLE".equals(detailType)) {
                 String typeFqn = (String) response.get("typeFqn");
@@ -100,16 +101,42 @@ public class GetTokenDetailService implements GetTokenDetailUseCase {
     private void enrichTypeHierarchy(String typeFqn, Map<String, Object> response) {
         List<TypeHierarchyEntry> supertypes = typeHierarchyRepository.findSupertypes(typeFqn);
         String superclassFqn = null;
-        List<String> interfaces = new ArrayList<>();
+        List<Map<String, Object>> interfaces = new ArrayList<>();
         for (TypeHierarchyEntry entry : supertypes) {
             if ("EXTENDS".equals(entry.relationshipKind())) {
                 superclassFqn = entry.supertypeFqn();
             } else if ("IMPLEMENTS".equals(entry.relationshipKind())) {
-                interfaces.add(entry.supertypeFqn());
+                Map<String, Object> iface = new LinkedHashMap<>();
+                iface.put("qualifiedName", entry.supertypeFqn());
+                populateTypeLocation(entry.supertypeFqn(), iface);
+                interfaces.add(iface);
             }
         }
-        if (superclassFqn != null) response.put("superclassFqn", superclassFqn);
+        if (superclassFqn != null) {
+            response.put("superclassFqn", superclassFqn);
+            symbolRepository.findByQualifiedName(new QualifiedName(superclassFqn)).ifPresent(sym -> {
+                response.put("superclassFileId", sym.fileIdentifier().value());
+                sym.lineStart().ifPresent(l -> response.put("superclassLineStart", l.value()));
+                sourceFileRepository.findByIdentifier(sym.fileIdentifier()).ifPresent(sf -> {
+                    response.put("superclassFilePath", sf.path().value());
+                    repositoryStore.findByIdentifier(sf.repositoryIdentifier())
+                            .ifPresent(r -> response.put("superclassRepositoryName", r.name().value()));
+                });
+            });
+        }
         if (!interfaces.isEmpty()) response.put("implementedInterfaces", interfaces);
+    }
+
+    private void populateTypeLocation(String fqn, Map<String, Object> target) {
+        symbolRepository.findByQualifiedName(new QualifiedName(fqn)).ifPresent(sym -> {
+            target.put("fileId", sym.fileIdentifier().value());
+            sym.lineStart().ifPresent(l -> target.put("lineStart", l.value()));
+            sourceFileRepository.findByIdentifier(sym.fileIdentifier()).ifPresent(sf -> {
+                target.put("filePath", sf.path().value());
+                repositoryStore.findByIdentifier(sf.repositoryIdentifier())
+                        .ifPresent(r -> target.put("repositoryName", r.name().value()));
+            });
+        });
     }
 
     /** Returns overloads as structured objects with parameter types and file location. */
@@ -179,6 +206,7 @@ public class GetTokenDetailService implements GetTokenDetailUseCase {
             Map<String, Object> dto = new LinkedHashMap<>();
             dto.put("qualifiedName", entry.subtypeFqn());
             dto.put("relationshipKind", entry.relationshipKind());
+            populateTypeLocation(entry.subtypeFqn(), dto);
             return dto;
         }).toList();
     }
