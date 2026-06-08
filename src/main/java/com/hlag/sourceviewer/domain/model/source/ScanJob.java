@@ -58,6 +58,9 @@ public class ScanJob {
     @Column(name = "force_full_reindex", nullable = false)
     private boolean forceFullReindex;
 
+    @Column(name = "last_heartbeat_at")
+    private Instant lastHeartbeatAt;
+
     protected ScanJob() {}
 
     public ScanJob(
@@ -94,8 +97,10 @@ public class ScanJob {
     public TokenCount filesScanned() { return filesScanned; }
     public Optional<ErrorMessage> errorMessage() { return Optional.ofNullable(errorMessage); }
     public boolean forceFullReindex() { return forceFullReindex; }
+    public Optional<Instant> lastHeartbeatAt() { return Optional.ofNullable(lastHeartbeatAt); }
 
     public void setStatus(ScanJobStatus status) { this.status = status; }
+    public void setLastHeartbeatAt(Instant lastHeartbeatAt) { this.lastHeartbeatAt = lastHeartbeatAt; }
     public void setStartedAt(Instant startedAt) { this.startedAt = startedAt; }
     public void setFinishedAt(Instant finishedAt) { this.finishedAt = finishedAt; }
     public void setFilesScanned(TokenCount filesScanned) { this.filesScanned = filesScanned; }

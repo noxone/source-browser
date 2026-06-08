@@ -73,14 +73,14 @@ class ValueObjectUnitTest {
     @Test
     void filePath_erkennt_java_dateien() {
         var path = new FilePath("src/main/java/eu/noxone/Foo.java");
-        assertThat(path.isJavaFile()).isTrue();
+        assertThat(path.hasExtension("java")).isTrue();
         assertThat(path.extension()).isEqualTo("java");
     }
 
     @Test
     void filePath_erkennt_nicht_java_dateien() {
         var path = new FilePath("src/main/resources/application.properties");
-        assertThat(path.isJavaFile()).isFalse();
+        assertThat(path.hasExtension("java")).isFalse();
         assertThat(path.extension()).isEqualTo("properties");
     }
 

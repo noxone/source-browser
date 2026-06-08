@@ -1,4 +1,5 @@
 <template>
+  <div class="h-full overflow-y-auto p-8">
   <div class="max-w-3xl">
     <div class="mb-8">
       <h1 class="text-2xl font-bold text-gray-900">User Settings</h1>
@@ -180,6 +181,7 @@
         </div>
       </div>
     </section>
+  </div>
   </div>
 </template>
 

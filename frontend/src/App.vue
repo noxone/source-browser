@@ -1,7 +1,7 @@
 <template>
   <div class="flex h-screen overflow-hidden bg-gray-50">
     <NavigationSidebar />
-    <main class="flex-1 overflow-y-auto p-8">
+    <main class="flex-1 overflow-hidden">
       <RouterView />
     </main>
   </div>

@@ -1,0 +1,25 @@
+# Build outputs — rebuilt inside Docker
+target/
+
+# Git history — not needed in build context
+.git/
+.github/
+
+# Frontend tooling — re-downloaded by frontend-maven-plugin during build
+frontend/node/
+frontend/node_modules/
+
+# IDE and editor files
+.idea/
+.settings/
+.classpath
+.project
+*.iml
+*.iws
+*.ipr
+
+# Dev environment config — not needed inside image
+docker-compose.yml
+
+# Documentation
+docs/

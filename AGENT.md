@@ -611,7 +611,172 @@ When this project is further developed with the help of an AI assistant:
 
 ---
 
-## 9. Glossary
+## 9. Adding a New Language Server Provider (LSP)
+
+To wire up a Language Server for a new language, follow the pattern established for JDTLS (Java).
+
+### 9.1 Overview
+
+The LSP integration is structured around four interfaces/abstractions:
+
+| Interface | Responsibility |
+|---|---|
+| `LanguageServerProvider` | Manages the lifecycle of a single language server process |
+| `LanguageClient` | Receives notifications and diagnostics from the server |
+| `ReadinessStrategy` | Decides when the server is ready to accept requests |
+| `LspManager` | Central registry; resolves the right provider by language key |
+
+### 9.2 Step-by-Step Guide
+
+**Step 1 — Implement `LanguageServerProvider`**
+
+Create a class in `application.scan.lsp` (or `infrastructure.lsp` for server-specific bootstrapping) that implements `LanguageServerProvider`.
+
+Key responsibilities:
+- Start the server process (via `ProcessBuilder`) and connect via stdio.
+- Perform the LSP `initialize`/`initialized` handshake.
+- Expose a `LanguageServer` instance for callers.
+- Implement `shutdown()` that sends `shutdown` + `exit` to the server.
+- Annotate with `@ApplicationScoped` so CDI manages the lifecycle.
+
+```java
+@ApplicationScoped
+public class MyLangServerProvider implements LanguageServerProvider {
+    @Override public String languageKey() { return "mylang"; }
+    @Override public LanguageServer languageServer() { ... }
+    @Override public void initialize(Path workspaceRoot) { ... }
+    @Override public void shutdown() { ... }
+}
+```
+
+**Step 2 — Implement a `LanguageClient`**
+
+Extend `LanguageClientImpl` (or implement `LanguageClient` from LSP4J) to handle:
+- `publishDiagnostics` (log or discard)
+- `logMessage` / `showMessage` (route to SLF4J)
+- Any server-specific notifications
+
+```java
+public class MyLangLanguageClient extends LanguageClientImpl {
+    @Override
+    public void publishDiagnostics(PublishDiagnosticsParams params) {
+        // log or ignore
+    }
+}
+```
+
+**Step 3 — Implement a `ReadinessStrategy`**
+
+The readiness strategy determines when to stop polling the server's `initialize` result and treat it as ready. Common patterns:
+
+- **`InitializeResultStrategy`** — resolved as soon as `initialize` response is received (simplest; suitable for most servers).
+- **`LogMessageStrategy`** — wait for a specific log message (e.g. JDTLS emits `"Workspace/buildProjects"` when the workspace is indexed).
+
+```java
+public class MyLangReadinessStrategy implements ReadinessStrategy {
+    @Override
+    public CompletableFuture<Void> awaitReady(LanguageClient client) {
+        // return a future that completes when the server is usable
+    }
+}
+```
+
+**Step 4 — Register the provider in `LspManager`**
+
+`LspManager` is a CDI bean that keeps a `Map<String, LanguageServerProvider>`. Inject the new provider and register it by language key:
+
+```java
+@ApplicationScoped
+public class LspManager {
+    @Inject MyLangServerProvider myLangProvider;
+
+    public Optional<LanguageServerProvider> getLspForLanguage(String languageKey) {
+        return Optional.ofNullable(providers.get(languageKey));
+    }
+}
+```
+
+Alternatively, use CDI `Instance<LanguageServerProvider>` with `@Any` and iterate:
+
+```java
+@Inject @Any Instance<LanguageServerProvider> providers;
+
+public Optional<LanguageServerProvider> getLspForLanguage(String key) {
+    return StreamSupport.stream(providers.spliterator(), false)
+        .filter(p -> p.languageKey().equals(key))
+        .findFirst();
+}
+```
+
+**Step 5 — Implement a language-specific indexer**
+
+Create a class that extends `AbstractAntlr4Indexer` (for lexer-based tokenisation) and overrides `indexFile()` to also use LSP when available:
+
+```java
+@ApplicationScoped
+public class MyLangIndexer extends AbstractAntlr4Indexer {
+    @Inject LspManager lspManager;
+
+    @Override
+    public ParsedFile indexFile(FileIdentifier fileId, FilePath path,
+                                String content, Object context) {
+        ParsedFile antlrResult = super.indexFile(fileId, path, content, context);
+
+        Optional<LanguageServerProvider> lsp =
+            lspManager.getLspForLanguage("mylang");
+        if (lsp.isPresent()) {
+            // use lsp.get().languageServer() to call:
+            //   textDocument/documentSymbol  → replace ANTLR symbols
+            //   textDocument/definition       → resolve references
+            //   textDocument/hover            → enrich token hover text
+        }
+        return antlrResult; // fallback
+    }
+}
+```
+
+### 9.3 LSP Calls Used
+
+| LSP Request | When Called | What to Do With Result |
+|---|---|---|
+| `textDocument/documentSymbol` | Once per file, after `didOpen` | Walk the `DocumentSymbol` tree recursively; build FQN by prepending parent names with `.` or `#`. Map LSP `SymbolKind` to our `SymbolKind` enum. |
+| `textDocument/definition` | Once per non-declaration IDENTIFIER token | Store the definition `Location` (file URI + position) in `PendingReference.definitionFilePath/Line/Column`. Resolution to FQN happens later in `ExecuteScanJobService.storeSymbols()`. |
+| `textDocument/hover` | Once per IDENTIFIER token | Store the hover markdown/plaintext as `hoverText` on the `ExtractedToken`. |
+
+### 9.4 LSP SymbolKind Mapping
+
+| LSP integer | LSP name | Our `SymbolKind` |
+|---|---|---|
+| 2 | Module | NAMESPACE |
+| 3 | Namespace | NAMESPACE |
+| 5 | Class | CLASS |
+| 6 | Method | METHOD |
+| 7 | Property | PROPERTY |
+| 8 | Field | FIELD |
+| 9 | Constructor | CONSTRUCTOR |
+| 10 | Enum | ENUM |
+| 11 | Interface | INTERFACE |
+| 12 | Function | FUNCTION |
+| 13 | Variable | LOCAL_VARIABLE |
+| 22 | EnumMember | ENUM_CONSTANT |
+| 26 | TypeParameter | TYPE_ALIAS |
+
+### 9.5 Checklist
+
+- [ ] `LanguageServerProvider` implementation (`@ApplicationScoped`)
+- [ ] `LanguageClient` implementation
+- [ ] `ReadinessStrategy` implementation
+- [ ] Provider registered in `LspManager`
+- [ ] Language-specific indexer (`extends AbstractAntlr4Indexer`)
+- [ ] `handles(FilePath)` returns `true` for the new file extensions
+- [ ] `supportedLanguage()` returns the language key used by `LspManager`
+- [ ] Fallback to ANTLR-only when LSP is unavailable
+- [ ] Unit test covering the ANTLR fallback path
+- [ ] Integration test (or manual verification) covering the LSP path
+
+---
+
+## 10. Glossary
 
 | Term | Meaning |
 |---|---|
@@ -628,7 +793,7 @@ When this project is further developed with the help of an AI assistant:
 
 ---
 
-## 10. Open Points / Roadmap
+## 11. Open Points / Roadmap
 
 Points not yet decided, to be resolved during the project:
 

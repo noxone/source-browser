@@ -39,8 +39,39 @@ public class PanacheSymbolRepository
     }
 
     @Override
+    public Optional<Symbol> findByFileAndPositionForScan(FileIdentifier fileId, int line, int column, Long scanJobId) {
+        Optional<Symbol> unpublished = find(
+                "fileIdentifier = ?1 AND lineStart = ?2 AND columnStart = ?3 AND published = false AND scanJobId = ?4",
+                fileId, new com.hlag.sourceviewer.domain.model.identifier.LineNumber(line),
+                new com.hlag.sourceviewer.domain.model.identifier.ColumnNumber(column), scanJobId)
+                .firstResultOptional();
+        if (unpublished.isPresent()) {
+            return unpublished;
+        }
+        return find("fileIdentifier = ?1 AND lineStart = ?2 AND columnStart = ?3 AND published = true",
+                fileId, new com.hlag.sourceviewer.domain.model.identifier.LineNumber(line),
+                new com.hlag.sourceviewer.domain.model.identifier.ColumnNumber(column))
+                .firstResultOptional();
+    }
+
+    @Override
     public List<Symbol> findBySimpleName(SimpleName name) {
         return list("name = ?1 AND published = true", name);
+    }
+
+    @Override
+    public List<Symbol> findByQualifiedNamePrefix(String prefix) {
+        // Native SQL required: JPQL cannot navigate into a @AttributeConverter-mapped field.
+        // Escape LIKE special characters so method names containing '_' are not treated as wildcards.
+        String escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+        @SuppressWarnings("unchecked")
+        java.util.List<Symbol> result = getEntityManager()
+                .createNativeQuery(
+                        "SELECT * FROM symbol WHERE qualified_name LIKE :prefix ESCAPE '\\' AND published = true",
+                        Symbol.class)
+                .setParameter("prefix", escaped + "%")
+                .getResultList();
+        return result;
     }
 
     @Override

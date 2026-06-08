@@ -1,5 +1,7 @@
 package com.hlag.sourceviewer.domain.port.incoming;
 
+import java.time.Instant;
+
 /**
  * Use case for executing queued scan jobs.
  *
@@ -16,4 +18,12 @@ public interface ExecuteScanJobUseCase {
      *         {@code false} if the queue was empty
      */
     boolean tryExecuteNextJob();
+
+    /**
+     * Cleans up and marks as FAILED any RUNNING scan jobs whose last heartbeat occurred
+     * before {@code staleBefore}. Safe to call from multiple instances simultaneously.
+     *
+     * @return the number of stale jobs recovered
+     */
+    int recoverStaleJobs(Instant staleBefore);
 }

@@ -15,7 +15,9 @@ import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
 import com.hlag.sourceviewer.domain.port.incoming.ManageAppSettingsUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TokenDetailRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.TokenStreamRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TypeHierarchyRepository;
 import jakarta.transaction.TransactionManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
@@ -48,6 +50,8 @@ class ExecuteScanJobServiceUnitTest {
     private ManageAppSettingsUseCase manageAppSettings;
     private LanguageIndexerRegistry languageIndexerRegistry;
     private TokenStreamRepository tokenStreamRepository;
+    private TokenDetailRepository tokenDetailRepository;
+    private TypeHierarchyRepository typeHierarchyRepository;
     private ExecuteScanJobService service;
 
     @BeforeEach
@@ -63,6 +67,8 @@ class ExecuteScanJobServiceUnitTest {
         manageAppSettings = mock(ManageAppSettingsUseCase.class);
         languageIndexerRegistry = mock(LanguageIndexerRegistry.class);
         tokenStreamRepository = mock(TokenStreamRepository.class);
+        tokenDetailRepository = mock(TokenDetailRepository.class);
+        typeHierarchyRepository = mock(TypeHierarchyRepository.class);
         when(manageAppSettings.getSetting(
                 ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE))
@@ -76,7 +82,8 @@ class ExecuteScanJobServiceUnitTest {
                 scanJobRepository, repositoryStore, gitAccess,
                 sourceFileRepository, documentRepository, transactionManager,
                 symbolRepository, symbolReferenceRepository,
-                manageAppSettings, languageIndexerRegistry, tokenStreamRepository);
+                manageAppSettings, languageIndexerRegistry, tokenStreamRepository,
+                tokenDetailRepository, typeHierarchyRepository);
     }
 
     // ── tryExecuteNextJob — no job available ──────────────────────────────────

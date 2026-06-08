@@ -72,7 +72,9 @@ public class AppSettingsResource {
             Map.entry(ManageAppSettingsUseCase.SETTING_SCHEDULER_SYNC_GROUPS_CRON,
                     "Cron expression for the daily group-sync job (Quarkus/Quartz format, e.g. \"0 0 2 * * ?\")"),
             Map.entry(ManageAppSettingsUseCase.SETTING_SCHEDULER_DETECT_CHANGES_CRON,
-                    "Cron expression for the repository change-detection job (Quarkus/Quartz format, e.g. \"0 0 * * * ?\")")
+                    "Cron expression for the repository change-detection job (Quarkus/Quartz format, e.g. \"0 0 * * * ?\")"
+                    // TODO: Add a link https://www.quartz-scheduler.org/documentation/quartz-2.3.0/tutorials/crontrigger.html
+            )
     );
 
     /** Known settings with their default values, in display order. */

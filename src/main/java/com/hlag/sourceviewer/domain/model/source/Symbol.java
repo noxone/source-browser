@@ -56,6 +56,12 @@ public class Symbol {
     @Column(name = "column_start")
     private ColumnNumber columnStart;
 
+    @Column(name = "column_end")
+    private ColumnNumber columnEnd;
+
+    @Column(name = "language_kind", length = 50)
+    private String languageKind;
+
     @Column(name = "modifiers", columnDefinition = "text[]")
     @JdbcTypeCode(SqlTypes.ARRAY)
     private String[] modifiers;
@@ -87,6 +93,22 @@ public class Symbol {
             Optional<LineNumber> lineEnd,
             Optional<ColumnNumber> columnStart,
             List<String> modifiers) {
+        this(fileIdentifier, kind, name, qualifiedName, signature, lineStart, lineEnd, columnStart,
+                Optional.empty(), Optional.empty(), modifiers);
+    }
+
+    public Symbol(
+            FileIdentifier fileIdentifier,
+            SymbolKind kind,
+            SimpleName name,
+            QualifiedName qualifiedName,
+            Optional<SimpleName> signature,
+            Optional<LineNumber> lineStart,
+            Optional<LineNumber> lineEnd,
+            Optional<ColumnNumber> columnStart,
+            Optional<ColumnNumber> columnEnd,
+            Optional<String> languageKind,
+            List<String> modifiers) {
         this.fileIdentifier = fileIdentifier;
         this.kind = kind;
         this.name = name;
@@ -95,6 +117,8 @@ public class Symbol {
         this.lineStart = lineStart.orElse(null);
         this.lineEnd = lineEnd.orElse(null);
         this.columnStart = columnStart.orElse(null);
+        this.columnEnd = columnEnd.orElse(null);
+        this.languageKind = languageKind.orElse(null);
         this.modifiers = modifiers == null ? new String[0] : modifiers.toArray(String[]::new);
     }
 
@@ -107,7 +131,16 @@ public class Symbol {
     public Optional<LineNumber> lineStart() { return Optional.ofNullable(lineStart); }
     public Optional<LineNumber> lineEnd() { return Optional.ofNullable(lineEnd); }
     public Optional<ColumnNumber> columnStart() { return Optional.ofNullable(columnStart); }
+    public Optional<ColumnNumber> columnEnd() { return Optional.ofNullable(columnEnd); }
+    public Optional<String> languageKind() { return Optional.ofNullable(languageKind); }
     public List<String> modifiers() {
         return modifiers == null ? List.of() : Arrays.asList(modifiers);
+    }
+
+    public Optional<String> toStartLocation() {
+        if (lineStart == null || columnStart == null) {
+            return Optional.empty();
+        }
+        return Optional.of(lineStart.value() + ":" + columnStart.value());
     }
 }

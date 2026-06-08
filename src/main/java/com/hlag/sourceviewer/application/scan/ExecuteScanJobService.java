@@ -4,6 +4,7 @@ import com.hlag.sourceviewer.application.scan.indexer.LanguageIndexerRegistry;
 import com.hlag.sourceviewer.application.scan.indexer.SelectedIndexerContext;
 import com.hlag.sourceviewer.domain.model.identifier.BranchName;
 import com.hlag.sourceviewer.domain.model.identifier.CommitSha;
+import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
 import com.hlag.sourceviewer.domain.model.identifier.DisplayName;
 import com.hlag.sourceviewer.domain.model.identifier.ErrorMessage;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
@@ -29,8 +30,11 @@ import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TokenDetailRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.TokenStreamRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TypeHierarchyRepository;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.context.control.ActivateRequestContext;
 import jakarta.inject.Inject;
 import jakarta.transaction.InvalidTransactionException;
 import jakarta.transaction.NotSupportedException;
@@ -88,6 +92,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
     private final ManageAppSettingsUseCase manageAppSettings;
     private final LanguageIndexerRegistry languageIndexerRegistry;
     private final TokenStreamRepository tokenStreamRepository;
+    private final TokenDetailRepository tokenDetailRepository;
+    private final TypeHierarchyRepository typeHierarchyRepository;
 
     @Inject
     public ExecuteScanJobService(
@@ -101,7 +107,9 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             SymbolReferenceRepository symbolReferenceRepository,
             ManageAppSettingsUseCase manageAppSettings,
             LanguageIndexerRegistry languageIndexerRegistry,
-            TokenStreamRepository tokenStreamRepository) {
+            TokenStreamRepository tokenStreamRepository,
+            TokenDetailRepository tokenDetailRepository,
+            TypeHierarchyRepository typeHierarchyRepository) {
         this.scanJobRepository = scanJobRepository;
         this.repositoryStore = repositoryStore;
         this.gitAccess = gitAccess;
@@ -113,6 +121,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         this.manageAppSettings = manageAppSettings;
         this.languageIndexerRegistry = languageIndexerRegistry;
         this.tokenStreamRepository = tokenStreamRepository;
+        this.tokenDetailRepository = tokenDetailRepository;
+        this.typeHierarchyRepository = typeHierarchyRepository;
     }
 
     /**
@@ -182,6 +192,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 symbolRepository.deleteUnpublishedByScanJob(scanJobId);
                 documentRepository.deleteUnpublishedByScanJob(scanJobId);
                 tokenStreamRepository.deleteUnpublishedByScanJob(scanJobId);
+                tokenDetailRepository.deleteUnpublishedByScanJob(scanJobId);
+                typeHierarchyRepository.deleteUnpublishedByScanJob(scanJobId);
             });
         } catch (Exception e) {
             logger.error("Failed to clean up unpublished data for scan job {}", identifier.value(), e);
@@ -196,6 +208,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
      * is marked FAILED.</p>
      */
     @Override
+    @ActivateRequestContext
     public boolean tryExecuteNextJob() {
         Optional<ScanJob> job = pollAndMarkRunning();
         if (job.isEmpty()) {
@@ -221,28 +234,29 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         return true;
     }
 
-    private int performScan(ScanJob job, Repository repository) {
+    private int performScan(ScanJob scanJob, Repository repository) {
         logger.info("Starting scan of repository '{}' for job {} (trigger: {}, commit: {}, force: {})",
                 repository.name().value(),
-                job.identifier().value(),
-                job.triggerType(),
-                job.commitSha().map(CommitSha::value).orElse("HEAD"),
-                job.forceFullReindex());
+                scanJob.identifier().value(),
+                scanJob.triggerType(),
+                scanJob.commitSha().map(CommitSha::value).orElse("HEAD"),
+                scanJob.forceFullReindex());
 
         gitAccess.prepareRepository(repository);
 
-        var targetSha = job.commitSha()
+        var targetSha = scanJob.commitSha()
                 .orElseGet(() -> gitAccess.fetchRemoteHeadSha(repository, repository.defaultBranch()));
-        var branch = repository.defaultBranch();
+        var branchName = repository.defaultBranch();
 
         List<FilePath> toIndex;
         List<FilePath> toDelete;
 
         boolean isFirstScan = repository.lastCommitSha().isEmpty();
-        if (job.forceFullReindex() || isFirstScan) {
+        if (scanJob.forceFullReindex() || isFirstScan) {
             logger.info("Full index of repository '{}' at commit {}", repository.name().value(), targetSha.shortForm());
             toIndex = gitAccess.listAllFiles(repository, targetSha);
             toDelete = List.of();
+            // TODO: Even for a full scan it might be necessary to delete old files.
         } else {
             var lastSha = repository.lastCommitSha().get();
             logger.info("Incremental index of repository '{}': {} → {}",
@@ -251,9 +265,10 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             toDelete = gitAccess.deletedFilesBetween(repository, lastSha, targetSha);
         }
 
+        // TODO: delete files later, as the indexing might fail... then we would like to keep the previous version
         for (FilePath path : toDelete) {
             runInNewTransaction(() ->
-                    sourceFileRepository.findByRepositoryAndPath(repository.identifier(), branch, path)
+                    sourceFileRepository.findByRepositoryAndPath(repository.identifier(), branchName, path)
                             .ifPresent(f -> {
                                 logger.debug("Removing deleted file from index: {}", path.value());
                                 sourceFileRepository.deleteByIdentifier(f.identifier());
@@ -261,8 +276,8 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         }
 
         // ── Phase 1: full-text-search document indexing ───────────────────────
-        int indexed = runBatchLoop(toIndex, repository.name().value(), "document",
-                batch -> indexDocumentBatch(batch, job, repository, targetSha, branch));
+        int indexed = runBatchLoop(scanJob.identifier(), toIndex, repository.name().value(), "document",
+                batch -> indexDocumentBatch(batch, scanJob, repository, targetSha, branchName));
 
         // ── Phase 2: language-specific symbol indexing ────────────────────────
         Path repoLocalPath = gitAccess.getLocalPath(repository);
@@ -271,87 +286,110 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
 
         try {
             if (!indexerContexts.isEmpty()) {
-                runBatchLoop(toIndex, repository.name().value(), "symbol",
-                        batch -> indexSymbolBatch(batch, job, repository, targetSha, indexerContexts));
+                runBatchLoop(scanJob.identifier(), toIndex, repository.name().value(), "symbol",
+                        false,  // collection is slow; indexSymbolBatch owns its storage transaction
+                        batch -> indexSymbolBatch(batch, scanJob, repository, targetSha, indexerContexts));
+            } else {
+                logger.info("No symbol indexers available for repository '{}'", repository.name().value());
             }
         } finally {
-            indexerContexts.forEach((lang, ctx) -> ctx.indexer().teardown(ctx.context()));
+            indexerContexts.values()
+                    .forEach(indexerContext -> indexerContext
+                            .indexer()
+                            .teardown(indexerContext.context()));
         }
 
         runInNewTransaction(() ->
-                activateDocuments(job.identifier(), repository, targetSha));
+                activateDocuments(scanJob.identifier(), repository, targetSha));
 
         logger.info("Scan of repository '{}' for job {} completed: {} indexed, {} deleted",
-                repository.name().value(), job.identifier().value(), indexed, toDelete.size());
+                repository.name().value(), scanJob.identifier().value(), indexed, toDelete.size());
 
         return indexed;
     }
+
+    private record CollectedFile(FileIdentifier fileId, ParsedFile parsedFile) {}
 
     /**
      * Runs a batch loop over {@code files} with adaptive batch-size halving on timeout.
      * Returns the total count returned by {@code batchAction} (meaningful for Phase 1;
      * Phase 2 can ignore the return value).
+     *
+     * <p>When {@code wrapInTransaction} is {@code true} (the default), each batch is executed
+     * inside a new JTA transaction. When {@code false}, the batch action is responsible for
+     * managing its own transaction(s) — use this when the action performs expensive non-DB
+     * work before storing, so that the transaction does not time out during collection.</p>
      */
-    private int runBatchLoop(List<FilePath> files, String repoName, String phase,
+    private int runBatchLoop(ScanJobIdentifier jobIdentifier, List<FilePath> files,
+                             String repositoryName, String phase, boolean wrapInTransaction,
                              BatchAction batchAction) {
         int currentBatchSize = Integer.parseInt(manageAppSettings.getSetting(
                 ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE));
-        int total = 0;
-        int i = 0;
-        while (i < files.size()) {
-            List<FilePath> batch = files.subList(i, Math.min(i + currentBatchSize, files.size()));
+        int numberOfProcessedFiles = 0;
+        int indexInFiles = 0;
+        while (indexInFiles < files.size()) {
+            List<FilePath> batch = files.subList(indexInFiles, Math.min(indexInFiles + currentBatchSize, files.size()));
             AtomicInteger batchCount = new AtomicInteger(0);
             try {
-                runInNewTransaction(() -> batchCount.set(batchAction.run(batch)));
-                total += batchCount.get();
-                i += batch.size();
+                if (wrapInTransaction) {
+                    runInNewTransaction(() -> batchCount.set(batchAction.run(batch)));
+                } else {
+                    batchCount.set(batchAction.run(batch));
+                }
+                updateHeartbeat(jobIdentifier);
+                numberOfProcessedFiles += batchCount.get();
+                indexInFiles += batch.size();
+                logger.info("[{}] {}: {}/{} files done ({}%)",
+                        repositoryName, phase,
+                        numberOfProcessedFiles, files.size(),
+                        files.isEmpty() ? 100 : numberOfProcessedFiles * 100 / files.size());
             } catch (TransactionTimeoutException e) {
                 if (batch.size() <= 1) {
                     throw e;
                 }
                 currentBatchSize = Math.max(1, currentBatchSize / 2);
                 logger.warn("Batch of {} files timed out for repository '{}' ({} phase) — reducing batch size to {} and retrying",
-                        batch.size(), repoName, phase, currentBatchSize);
+                        batch.size(), repositoryName, phase, currentBatchSize);
             } catch (RuntimeException e) {
-                logger.warn("Batch of {} files failed for repository '{}' ({} phase) — skipping batch",
-                        batch.size(), repoName, phase, e);
-                i += batch.size();
+                logger.error("Batch of {} files failed for repository '{}' ({} phase) — skipping batch",
+                        batch.size(), repositoryName, phase, e);
+                indexInFiles += batch.size();
             }
         }
-        return total;
+        return numberOfProcessedFiles;
     }
 
-    @FunctionalInterface
-    private interface BatchAction {
-        int run(List<FilePath> batch);
+    private int runBatchLoop(ScanJobIdentifier jobIdentifier, List<FilePath> files,
+                             String repositoryName, String phase, BatchAction batchAction) {
+        return runBatchLoop(jobIdentifier, files, repositoryName, phase, true, batchAction);
     }
 
-    private static final class TransactionTimeoutException extends RuntimeException {
-        TransactionTimeoutException(String message, Throwable cause) {
-            super(message, cause);
-        }
-    }
-
-    private int indexDocumentBatch(List<FilePath> batch, ScanJob job, Repository repository,
-                                   CommitSha targetSha, BranchName branch) {
-        int maxChunkSize = Integer.parseInt(manageAppSettings.getSetting(
+    private int indexDocumentBatch(List<FilePath> filePaths, ScanJob scanJob, Repository repository,
+                                   CommitSha targetSha, BranchName branchName) {
+        final var maxChunkSize = Integer.parseInt(manageAppSettings.getSetting(
                 ManageAppSettingsUseCase.SETTING_SCAN_CHUNK_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_CHUNK_SIZE));
-        int indexed = 0;
-        for (FilePath path : batch) {
+        var numberOfWorkedFiles = 0;
+        for (final var path : filePaths) {
             try {
-                var contentOpt = gitAccess.readFileContent(repository, path, targetSha);
+                final var contentOpt = gitAccess.readFileContent(repository, path, targetSha);
                 if (contentOpt.isEmpty()) {
+                    // TODO: The binary check should happen here, not in the git-access
                     logger.debug("Skipping binary file: {}", path.value());
                     continue;
                 }
-                logger.debug("Indexing for full-text search: {}", path.value());
-                String content = contentOpt.get();
-                var contentSha = new ContentSha(sha256(content));
+                final var content = contentOpt.get();
+                final var contentSha = new ContentSha(sha256(content));
+                if (content.isBlank()) {
+                    logger.debug("Skipping empty file: {}", path.value());
+                    continue;
+                }
 
-                var existing = sourceFileRepository.findByRepositoryAndPath(repository.identifier(), branch, path);
-                var fileId = existing
+                logger.debug("Indexing for full-text search: {}", path.value());
+
+                final var fileId = sourceFileRepository
+                        .findByRepositoryAndPath(repository.identifier(), branchName, path)
                         .map(f -> {
                             sourceFileRepository.updateContentSha(f.identifier(), contentSha);
                             return f.identifier();
@@ -359,92 +397,132 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                         .orElseGet(() -> sourceFileRepository.insert(
                                 new SourceFile(
                                         repository.identifier(),
-                                        branch,
+                                        branchName,
                                         path,
                                         contentSha,
+                                        // TODO: find language
                                         new DisplayName("unknown"),
                                         Instant.now())));
 
-                List<String> chunks = splitIntoChunks(content, maxChunkSize);
-                for (String chunk : chunks) {
+                final var chunks = splitIntoChunks(content, maxChunkSize);
+                for (var chunk : chunks) {
                     documentRepository.insertUnpublished(
-                            new Document(fileId, "source", chunk, job.identifier().value()));
+                            new Document(fileId, "source", chunk, scanJob.identifier().value()));
                 }
-                if (!chunks.isEmpty()) {
-                    indexed++;
-                }
+                ++numberOfWorkedFiles;
             } catch (Exception e) {
                 if (isTransactionRollbackPending()) {
-                    logger.error("Exception happened while indexing '{}' in '{}' after {} files — aborting batch",
-                            path.value(), repository.name().value(), indexed, e);
-                    throw new TransactionTimeoutException("Scan aborted: transaction timeout after " + indexed + " files", e);
+                    throw new TransactionTimeoutException("Scan aborted: transaction timeout after " + numberOfWorkedFiles + " files", e);
                 }
                 logger.warn("Failed to index file '{}' in repository '{}': {}",
                         path.value(), repository.name().value(), e.getMessage());
             }
         }
-        return indexed;
+        return numberOfWorkedFiles;
     }
 
-    private int indexSymbolBatch(List<FilePath> batch, ScanJob job, Repository repository,
+    private int indexSymbolBatch(List<FilePath> filePaths, ScanJob scanJob, Repository repository,
                                  CommitSha targetSha,
                                  Map<String, SelectedIndexerContext> indexerContexts) {
         var branch = repository.defaultBranch();
-        int indexed = 0;
-        for (FilePath path : batch) {
+        var scanJobId = scanJob.identifier().value();
+
+        // ── Phase 1: collection (no transaction — parsing can be very slow) ──
+        List<CollectedFile> collected = new ArrayList<>();
+        for (var filePath : filePaths) {
             try {
-                var matchingContext = indexerContexts.values().stream()
-                        .filter(ctx -> ctx.handles(path))
+                var indexerContext = indexerContexts.values().stream()
+                        .filter(ctx -> ctx.handles(filePath))
                         .findFirst();
-                if (matchingContext.isEmpty()) {
+                if (indexerContext.isEmpty()) {
                     continue;
                 }
-                var contentOpt = gitAccess.readFileContent(repository, path, targetSha);
+                var contentOpt = gitAccess.readFileContent(repository, filePath, targetSha);
                 if (contentOpt.isEmpty()) {
                     continue;
                 }
-                var fileOpt = sourceFileRepository.findByRepositoryAndPath(
-                        repository.identifier(), branch, path);
-                if (fileOpt.isEmpty()) {
+                var sourceFileOpt = sourceFileRepository.findByRepositoryAndPath(
+                        repository.identifier(), branch, filePath);
+                if (sourceFileOpt.isEmpty()) {
                     continue;
                 }
-                logger.debug("Indexing symbols of {}: {}", matchingContext.get().indexer().supportedLanguage(), path.value());
-                var fileId = fileOpt.get().identifier();
-                Long scanJobId = job.identifier().value();
-                var parsed = matchingContext.get().index(fileId, path, contentOpt.get());
-                storeSymbols(parsed, fileId, scanJobId);
-                storeTokenStream(parsed, fileId, scanJobId);
-                indexed++;
+                logger.debug("Indexing symbols of {}: {}", indexerContext.get().indexer().supportedLanguage(), filePath.value());
+                var fileId = sourceFileOpt.get().identifier();
+                var parsedFile = indexerContext.get().index(fileId, filePath, contentOpt.get());
+                collected.add(new CollectedFile(fileId, parsedFile));
             } catch (Exception e) {
-                if (isTransactionRollbackPending()) {
-                    logger.error("Exception happened while indexing symbols for '{}' in '{}' after {} files — aborting batch",
-                            path.value(), repository.name().value(), indexed, e);
-                    throw new TransactionTimeoutException("Symbol indexing aborted: transaction timeout after " + indexed + " files", e);
-                }
-                logger.warn("Failed to index symbols for '{}' in repository '{}': {}",
-                        path.value(), repository.name().value(), e.getMessage());
+                logger.warn("Failed to collect symbols for '{}' in repository '{}': {}",
+                        filePath.value(), repository.name().value(), e.getMessage());
             }
         }
-        return indexed;
+
+        // ── Phase 2: storage (inside one new transaction — fast DB inserts only) ──
+        if (!collected.isEmpty()) {
+            AtomicInteger stored = new AtomicInteger(0);
+            runInNewTransaction(() -> {
+                for (var r : collected) {
+                    try {
+                        storeSymbols(r.parsedFile(), r.fileId(), scanJobId, repository, branch);
+                        storeTokenStream(r.parsedFile(), r.fileId(), scanJobId);
+                        stored.incrementAndGet();
+                    } catch (Exception e) {
+                        if (isTransactionRollbackPending()) {
+                            throw new TransactionTimeoutException(
+                                    "Symbol storage aborted: transaction timeout after " + stored.get() + " files", e);
+                        }
+                        logger.warn("Failed to store symbols for file in repository '{}': {}",
+                                repository.name().value(), e.getMessage());
+                    }
+                }
+            });
+        }
+        return collected.size();
     }
 
-    private void storeSymbols(ParsedFile parsed, FileIdentifier fileId, Long scanJobId) {
+    private void storeSymbols(ParsedFile parsed, FileIdentifier fileId, Long scanJobId,
+                               Repository repository, BranchName branch) {
+        if (!parsed.tokenDetails().isEmpty()) {
+            tokenDetailRepository.insertAllUnpublished(parsed.tokenDetails(), scanJobId);
+        }
+        if (!parsed.hierarchyEntries().isEmpty()) {
+            typeHierarchyRepository.insertAllUnpublished(parsed.hierarchyEntries(), scanJobId);
+        }
+
         parsed.declarations().forEach(symbol -> symbolRepository.insertUnpublished(symbol, scanJobId));
 
         for (var ref : parsed.references()) {
-            // Prefer the newly inserted (unpublished) symbol for this scan job so that the
-            // reference survives activation with the correct new symbol ID.
-            Optional<SymbolIdentifier> symId = ref.resolvedName()
-                    .flatMap(qn -> symbolRepository.findByQualifiedNameForScan(qn, scanJobId))
-                    .map(Symbol::identifier);
+            // 1. Try FQN-based resolution (fast path).
+            Optional<Symbol> resolvedSym = ref.resolvedName()
+                    .flatMap(qn -> symbolRepository.findByQualifiedNameForScan(qn, scanJobId));
 
+            // 2. Fall back to definition-location-based resolution (LSP definition result).
+            if (resolvedSym.isEmpty()
+                    && ref.definitionFilePath().isPresent()
+                    && ref.definitionLine().isPresent()
+                    && ref.definitionColumn().isPresent()) {
+                var defFileOpt = sourceFileRepository.findByRepositoryAndPath(
+                        repository.identifier(), branch, ref.definitionFilePath().get());
+                if (defFileOpt.isPresent()) {
+                    resolvedSym = symbolRepository.findByFileAndPositionForScan(
+                            defFileOpt.get().identifier(),
+                            ref.definitionLine().get().value(),
+                            ref.definitionColumn().get().value(),
+                            scanJobId);
+                }
+            }
+
+            Optional<SymbolIdentifier> symId = resolvedSym.map(Symbol::identifier);
+            // Always store the FQN — either from the resolved symbol or from resolvedName.
+            Optional<QualifiedName> fqnToStore = resolvedSym.map(Symbol::qualifiedName)
+                    .or(ref::resolvedName);
             Optional<SimpleName> nameToStore = symId.isPresent()
                     ? Optional.empty()
                     : ref.resolvedName().map(qn -> new SimpleName(qn.value()))
                             .or(ref::unresolvedName);
 
             symbolReferenceRepository.insertUnpublished(
-                    new SymbolReference(fileId, symId, nameToStore, ref.kind(), ref.line(), ref.column()),
+                    new SymbolReference(fileId, symId, fqnToStore, nameToStore,
+                            ref.kind(), ref.line(), ref.column()),
                     scanJobId);
         }
     }
@@ -454,48 +532,26 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             return;
         }
 
-        // Build lookup: "line:col" → qualified name + symbol ID, from already-persisted declarations.
-        // Symbol IDs are available because insertUnpublished flushes the IDENTITY-generated ID back.
-        Map<String, String> declarationQn = new HashMap<>();
-        Map<String, Long> declarationId = new HashMap<>();
-        for (Symbol sym : parsed.declarations()) {
-            sym.lineStart().ifPresent(line ->
-                sym.columnStart().ifPresent(col -> {
-                    String key = line.value() + ":" + col.value();
-                    declarationQn.put(key, sym.qualifiedName().value());
-                    if (sym.identifier() != null) {
-                        declarationId.put(key, sym.identifier().value());
-                    }
-                }));
+        // Build lookup: "line:col" → highlight group ID, from pre-computed groups.
+        Map<String, Integer> highlightGroups = parsed.highlightGroups();
+
+        // Build set of positions that have a token_detail entry (= clickable tokens).
+        java.util.Set<String> detailPositions = new java.util.HashSet<>();
+        for (com.hlag.sourceviewer.domain.model.source.TokenDetail td : parsed.tokenDetails()) {
+            detailPositions.add(td.line() + ":" + td.columnStart());
         }
 
-        // Build lookup from unpublished references for this scan job (fallback: published).
-        Map<String, SymbolReference> refMap = new HashMap<>();
-        for (SymbolReference ref : symbolReferenceRepository.findByFileForScan(fileId, scanJobId)) {
-            ref.line().ifPresent(line ->
-                ref.columnStart().ifPresent(col ->
-                    refMap.put(line.value() + ":" + col.value(), ref)));
-        }
-
-        // Enrich IDENTIFIER tokens with semantic information where available.
+        // Enrich tokens with highlight group IDs and hasDetails flag.
         var enriched = new ArrayList<ExtractedToken>(parsed.tokens().size());
         for (ExtractedToken token : parsed.tokens()) {
-            if (token.kind() != ExtractedToken.TokenKind.IDENTIFIER) {
-                enriched.add(token);
-                continue;
-            }
             String key = token.line() + ":" + token.columnStart();
-            String qn = declarationQn.get(key);
-            Long symId = declarationId.get(key);
-            if (qn == null) {
-                SymbolReference ref = refMap.get(key);
-                if (ref != null) {
-                    symId = ref.symbolIdentifier().map(SymbolIdentifier::value).orElse(null);
-                }
+            Integer hg = highlightGroups.get(key);
+            boolean hasDetails = detailPositions.contains(key);
+            if (hg != null || hasDetails) {
+                enriched.add(token.withHighlightGroupId(hg).withHasDetails(hasDetails));
+            } else {
+                enriched.add(token);
             }
-            enriched.add(new ExtractedToken(
-                    token.line(), token.columnStart(), token.columnEnd(),
-                    token.text(), token.kind(), qn, symId, token.hoverText()));
         }
 
         tokenStreamRepository.storeUnpublished(fileId, enriched, scanJobId);
@@ -511,9 +567,39 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         documentRepository.deleteSupersededDocuments(scanJobId);
         tokenStreamRepository.publishByScanJob(scanJobId);
         tokenStreamRepository.deleteSupersededByScanJob(scanJobId);
+        tokenDetailRepository.publishByScanJob(scanJobId);
+        tokenDetailRepository.deleteSupersededByScanJob(scanJobId);
+        typeHierarchyRepository.publishByScanJob(scanJobId);
+        typeHierarchyRepository.deleteSupersededByScanJob(scanJobId);
         repository.setLastCommitSha(targetSha);
         repository.setLastScannedAt(Instant.now());
         repositoryStore.update(repository);
+    }
+
+    @Override
+    public int recoverStaleJobs(Instant staleBefore) {
+        List<ScanJob> stale = scanJobRepository.findStaleRunningJobs(staleBefore);
+        for (ScanJob job : stale) {
+            ScanJobIdentifier id = job.identifier();
+            logger.warn("Recovering stale scan job {} (repository {}, last heartbeat {})",
+                    id.value(), job.repositoryIdentifier().value(),
+                    job.lastHeartbeatAt().map(Instant::toString).orElse("never"));
+            cleanupOnFailure(id);
+            markFailed(id, "Scan job timed out — no heartbeat detected, likely killed mid-run");
+        }
+        return stale.size();
+    }
+
+    private void updateHeartbeat(ScanJobIdentifier identifier) {
+        try {
+            runInNewTransaction(() ->
+                    scanJobRepository.findByIdentifier(identifier).ifPresent(job -> {
+                        job.setLastHeartbeatAt(Instant.now());
+                        scanJobRepository.update(job);
+                    }));
+        } catch (Exception e) {
+            logger.warn("Failed to update heartbeat for scan job {}", identifier.value(), e);
+        }
     }
 
     /**

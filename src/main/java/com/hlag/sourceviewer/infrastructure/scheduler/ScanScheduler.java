@@ -103,6 +103,7 @@ public class ScanScheduler {
         scheduler.unscheduleJob(identity);
         scheduleJob(identity, newCron, task);
         logger.info("Job '{}' rescheduled with cron '{}'", identity, newCron);
+        // TODO: Check new cron expression before using, if it is OK
     }
 
     public void syncAllGroups() {

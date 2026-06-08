@@ -3,6 +3,7 @@ package com.hlag.sourceviewer.domain.model.source;
 import com.hlag.sourceviewer.domain.model.identifier.ColumnNumber;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.LineNumber;
+import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
 import com.hlag.sourceviewer.domain.model.identifier.ReferenceIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.ReferenceKind;
 import com.hlag.sourceviewer.domain.model.identifier.SimpleName;
@@ -32,6 +33,9 @@ public class SymbolReference {
 
     @Column(name = "symbol_id")
     private SymbolIdentifier symbolIdentifier;
+
+    @Column(name = "qualified_name", length = 500)
+    private QualifiedName qualifiedName;
 
     @Column(name = "unresolved_name")
     private SimpleName unresolvedName;
@@ -66,8 +70,20 @@ public class SymbolReference {
             ReferenceKind kind,
             Optional<LineNumber> line,
             Optional<ColumnNumber> columnStart) {
+        this(fileIdentifier, symbolIdentifier, Optional.empty(), unresolvedName, kind, line, columnStart);
+    }
+
+    public SymbolReference(
+            FileIdentifier fileIdentifier,
+            Optional<SymbolIdentifier> symbolIdentifier,
+            Optional<QualifiedName> qualifiedName,
+            Optional<SimpleName> unresolvedName,
+            ReferenceKind kind,
+            Optional<LineNumber> line,
+            Optional<ColumnNumber> columnStart) {
         this.fileIdentifier = fileIdentifier;
         this.symbolIdentifier = symbolIdentifier.orElse(null);
+        this.qualifiedName = qualifiedName.orElse(null);
         this.unresolvedName = unresolvedName.orElse(null);
         this.kind = kind;
         this.line = line.orElse(null);
@@ -77,6 +93,7 @@ public class SymbolReference {
     public ReferenceIdentifier identifier() { return id != null ? new ReferenceIdentifier(id) : null; }
     public FileIdentifier fileIdentifier() { return fileIdentifier; }
     public Optional<SymbolIdentifier> symbolIdentifier() { return Optional.ofNullable(symbolIdentifier); }
+    public Optional<QualifiedName> qualifiedName() { return Optional.ofNullable(qualifiedName); }
     public Optional<SimpleName> unresolvedName() { return Optional.ofNullable(unresolvedName); }
     public ReferenceKind kind() { return kind; }
     public Optional<LineNumber> line() { return Optional.ofNullable(line); }

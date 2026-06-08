@@ -347,8 +347,12 @@ public class JGitAccess implements GitAccess {
         }
         try (org.eclipse.jgit.lib.Repository gitRepository = openGitRepository(repository)) {
             try (Git git = new Git(gitRepository)) {
+                var ref = gitRepository.resolve("refs/remotes/origin/" + branch.value());
+                if (ref == null) {
+                    return Optional.empty();
+                }
                 var logCommand = git.log()
-                        .add(gitRepository.resolve("refs/remotes/origin/" + branch.value()))
+                        .add(ref)
                         .addPath(path.value())
                         .setMaxCount(1);
                 var commits = logCommand.call();

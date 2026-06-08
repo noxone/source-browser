@@ -27,13 +27,48 @@ export interface Token {
   t: string
   /** Token kind */
   k: TokenKind
-  /** Qualified name (present for symbol declarations / references) */
-  q?: string
-  /** Symbol ID (present for symbol declarations / references) */
-  s?: number
-  /** Hover text from LSP (type/method signatures) */
-  h?: string
+  /** Import group ID — tokens with the same g belong to one import/include statement */
+  g?: number
+  /** Highlight group ID — all tokens in the file with the same hg value are highlighted on click */
+  hg?: number
+  /** True if this token has a detail entry and is clickable */
+  d?: boolean
 }
+
+export interface MethodParam {
+  name: string
+  type: string
+}
+
+export interface MethodOverload {
+  signature: string
+  filePath?: string
+  repositoryName?: string
+  lineStart?: number
+}
+
+export interface MethodImpl {
+  qualifiedName: string
+  fileId: number
+  filePath: string | null
+  repositoryName: string | null
+  lineStart?: number
+}
+
+export interface TypeLocation {
+  qualifiedName: string
+  fileId?: number
+  filePath?: string
+  repositoryName?: string
+  lineStart?: number
+}
+
+export type TokenDetail =
+  | { detailType: 'TYPE_REF' | 'TYPE_DECL'; qualifiedName: string; kind: string; fileId?: number; filePath?: string; repositoryName?: string; lineStart?: number; superclassFqn?: string; superclassFileId?: number; superclassFilePath?: string; superclassRepositoryName?: string; superclassLineStart?: number; implementedInterfaces?: TypeLocation[]; knownSubtypes?: Array<TypeLocation & { relationshipKind: string }> }
+  | { detailType: 'VARIABLE'; name: string; variableKind: string; typeFqn: string | null; typeFileId?: number; typeFilePath?: string; typeRepositoryName?: string; typeLineStart?: number }
+  | { detailType: 'METHOD_CALL' | 'METHOD_DECL'; name: string; declaringClass: string; returnType: string; parameters: MethodParam[]; overloads: MethodOverload[]; implementations: MethodImpl[]; isConstructor?: boolean }
+  | { detailType: 'ANNOTATION'; qualifiedName: string }
+  | { detailType: 'KEYWORD'; keyword: string; description: string | null }
 
 export type TokenKind =
   | 'KEYWORD'

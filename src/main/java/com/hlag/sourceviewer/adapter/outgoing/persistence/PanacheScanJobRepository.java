@@ -8,6 +8,7 @@ import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -71,5 +72,17 @@ public class PanacheScanJobRepository
     @Transactional
     public void deleteAllQueued() {
         delete("status", ScanJob.ScanJobStatus.QUEUED);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public List<ScanJob> findStaleRunningJobs(Instant staleBefore) {
+        return getEntityManager()
+                .createNativeQuery(
+                        "SELECT * FROM scan_job WHERE status = 'RUNNING' " +
+                        "AND (last_heartbeat_at IS NULL OR last_heartbeat_at < :threshold)",
+                        ScanJob.class)
+                .setParameter("threshold", staleBefore)
+                .getResultList();
     }
 }

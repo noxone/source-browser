@@ -18,13 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.eclipse.lsp4j.ClientCapabilities;
-import org.eclipse.lsp4j.DidChangeConfigurationParams;
-import org.eclipse.lsp4j.InitializeParams;
-import org.eclipse.lsp4j.InitializeResult;
-import org.eclipse.lsp4j.InitializedParams;
-import org.eclipse.lsp4j.WorkspaceClientCapabilities;
-import org.eclipse.lsp4j.WorkspaceFolder;
+
+import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.launch.LSPLauncher;
 import org.eclipse.lsp4j.services.LanguageServer;
@@ -159,26 +154,60 @@ public class JdtlsLanguageServerProvider implements LanguageServerProvider {
 
     private static void initializeServer(LanguageServer languageServer, LspProjectContext context,
                                          Path mavenSettingsPath) {
-        InitializeParams params = new InitializeParams();
-        params.setRootUri(context.projectRootUri());
-        params.setWorkspaceFolders(List.of(new WorkspaceFolder(
+        InitializeParams initParams = new InitializeParams();
+        initParams.setRootUri(context.projectRootUri());
+        initParams.setWorkspaceFolders(List.of(new WorkspaceFolder(
                 context.projectRoot().toUri().toString(),
                 context.repository().name().value())));
 
-        ClientCapabilities capabilities = new ClientCapabilities();
+        ClientCapabilities clientCapabilities = new ClientCapabilities();
+        // workspace
         WorkspaceClientCapabilities workspaceCapabilities = new WorkspaceClientCapabilities();
         workspaceCapabilities.setConfiguration(true);
         workspaceCapabilities.setDidChangeConfiguration(new org.eclipse.lsp4j.DidChangeConfigurationCapabilities(true));
-        capabilities.setWorkspace(workspaceCapabilities);
-        params.setCapabilities(capabilities);
+        clientCapabilities.setWorkspace(workspaceCapabilities);
+        // symbols im document -> text document
+        DocumentSymbolCapabilities documentSymbolCapabilities = new DocumentSymbolCapabilities();
+        documentSymbolCapabilities.setHierarchicalDocumentSymbolSupport(true);
+        documentSymbolCapabilities.setLabelSupport(true);
+        // hover -> text document
+        HoverCapabilities hoverCapabilities = new HoverCapabilities();
+        hoverCapabilities.setContentFormat(List.of(MarkupKind.MARKDOWN));
+        // 2. References – alle Verwendungsstellen eines Symbols finden
+        //ReferenceCapabilities referenceCapabilities = new ReferenceCapabilities();
+        //textDocumentCapabilities.setReferences(referenceCapabilities);
+        // 3. Definition – zur Deklaration eines Symbols springen
+        DefinitionCapabilities definitionCapabilities = new DefinitionCapabilities();
+        // 4. Type Definition – zum Typ eines Ausdrucks springen
+        TypeDefinitionCapabilities typeDefinitionCapabilities = new TypeDefinitionCapabilities();
+        // 5. Implementation – Implementierungen eines Interfaces/abstrakte Methode finden
+        ImplementationCapabilities implementationCapabilities = new ImplementationCapabilities();
+        // 6. Call Hierarchy – Aufrufer und Aufgerufene einer Methode
+        CallHierarchyCapabilities callHierarchyCapabilities = new CallHierarchyCapabilities();
+        // 7. Semantic Tokens – semantische Klassifizierung aller Token im Dokument
+        SemanticTokensCapabilities semanticTokensCapabilities = new SemanticTokensCapabilities();
+        semanticTokensCapabilities.setRequests(new SemanticTokensClientCapabilitiesRequests(true, true));
+        // text document
+        TextDocumentClientCapabilities textDocumentCapabilities = new TextDocumentClientCapabilities();
+        textDocumentCapabilities.setDocumentSymbol(documentSymbolCapabilities);
+        textDocumentCapabilities.setHover(hoverCapabilities);
+        textDocumentCapabilities.setDefinition(definitionCapabilities);
+        textDocumentCapabilities.setTypeDefinition(typeDefinitionCapabilities);
+        textDocumentCapabilities.setImplementation(implementationCapabilities);
+        textDocumentCapabilities.setCallHierarchy(callHierarchyCapabilities);
+        textDocumentCapabilities.setSemanticTokens(semanticTokensCapabilities);
+        clientCapabilities.setTextDocument(textDocumentCapabilities);
+        // setzen
+        initParams.setCapabilities(clientCapabilities);
 
-        params.setInitializationOptions(buildInitializationOptions(mavenSettingsPath));
+        initParams.setInitializationOptions(buildInitializationOptions(mavenSettingsPath));
 
         try {
-            InitializeResult result = languageServer.initialize(params).get(30, TimeUnit.SECONDS);
+            InitializeResult result = languageServer.initialize(initParams).get(30, TimeUnit.SECONDS);
             if (result == null) {
                 throw new IllegalStateException("JDTLS initialize returned no result");
             }
+            JdtlsVersionChecker.checkVersion(result);
             languageServer.initialized(new InitializedParams());
 
             // Push the same settings again after initialized() so that JDTLS re-reads them

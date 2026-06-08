@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="h-full overflow-y-auto p-8">
     <!-- ── Repositories ─────────────────────────────────────────────────────── -->
     <div class="flex items-center justify-between mb-6">
       <div>

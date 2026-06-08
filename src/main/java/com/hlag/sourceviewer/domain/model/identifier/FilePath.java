@@ -14,8 +14,7 @@ public record FilePath(String value) implements ValueObject<String> {
         return index == -1 ? "" : value.substring(index + 1);
     }
 
-    /** Returns true if this is a Java source file. */
-    public boolean isJavaFile() {
-        return "java".equals(extension());
+    public boolean hasExtension(String extension) {
+        return extension().equals(extension);
     }
 }
