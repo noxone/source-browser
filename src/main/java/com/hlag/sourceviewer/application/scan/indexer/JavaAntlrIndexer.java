@@ -335,7 +335,8 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         }
 
         List<com.hlag.sourceviewer.domain.model.source.TokenDetail> result = new ArrayList<>();
-        for (ExtractedToken token : tokens) {
+        for (int tokenIdx = 0; tokenIdx < tokens.size(); tokenIdx++) {
+            ExtractedToken token = tokens.get(tokenIdx);
             if (!token.is(IDENTIFIER)) {
                 continue;
             }
@@ -353,6 +354,16 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                         result.add(td);
                     }
                 }
+                continue;
+            }
+
+            // Fix 1: member-access FQN — handles e.g. ImportOption.DoNotIncludeTests where only
+            // ImportOption is imported. Build the full FQN from the import map without calling hover.
+            String memberFqn = resolveQualifiedMemberAccess(tokens, tokenIdx, importMap);
+            if (memberFqn != null) {
+                result.add(buildTokenDetail(fileId, token,
+                        com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                        new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(memberFqn, "CLASS")));
                 continue;
             }
 
@@ -395,6 +406,21 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
             HoverTextParser.ParsedDetail parsed = HoverTextParser.parse(javaCode);
             if (parsed != null) {
+                // Fix 3: method-name mismatch guard — JDTLS sometimes returns the callee's signature
+                // for a local variable (e.g. hover on `fileUri` returns `resolveFileUri(...)`).
+                // Detect by checking the parsed method name against the token text.
+                if ((parsed.type() == com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.METHOD_CALL
+                        || parsed.type() == com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.METHOD_DECL)
+                        && parsed.detail() instanceof com.hlag.sourceviewer.domain.model.source.detail.MethodDetail md
+                        && !md.name().equals(token.text())) {
+                    String fqn = resolveTypeRef(token.text(), importMap, packagePrefix);
+                    if (fqn != null) {
+                        result.add(buildTokenDetail(fileId, token,
+                                com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                                new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS")));
+                    }
+                    continue;
+                }
                 Object detail = resolveDetailFqns(parsed.detail(), importMap, packagePrefix);
                 result.add(buildTokenDetail(fileId, token, parsed.type(), detail));
             } else {
@@ -408,6 +434,27 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             }
         }
         return result;
+    }
+
+    /**
+     * Resolves a member-access expression like {@code ImportOption.DoNotIncludeTests} where the
+     * qualifier is a key in the import map. Returns {@code qualifier_fqn + "." + token.text()}, or
+     * {@code null} if the pattern does not apply.
+     * <p>Only fires when the token looks like a class name (starts uppercase, not ALL_CAPS) to
+     * avoid false positives on field/method access chains.</p>
+     */
+    private static String resolveQualifiedMemberAccess(
+            List<ExtractedToken> tokens, int index, Map<String, String> importMap) {
+        if (!looksLikeClassName(tokens.get(index).text())) return null;
+        int j = index - 1;
+        while (j >= 0 && tokens.get(j).is(WHITESPACE)) j--;
+        if (j < 0 || !tokens.get(j).is(SEPARATOR, ".")) return null;
+        j--;
+        while (j >= 0 && tokens.get(j).is(WHITESPACE)) j--;
+        if (j < 0 || !tokens.get(j).is(IDENTIFIER)) return null;
+        String qualifierFqn = importMap.get(tokens.get(j).text());
+        if (qualifierFqn == null) return null;
+        return qualifierFqn + "." + tokens.get(index).text();
     }
 
     private static com.hlag.sourceviewer.domain.model.source.TokenDetail buildDetailFromSymbol(
@@ -498,6 +545,19 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             if (m.find()) {
                 String rawType = m.group(1);
                 String resolved = resolveRawTypeName(rawType, importMap, packagePrefix);
+                if (resolved != null) {
+                    detailMap.put("typeFqn", resolved);
+                    String newJson = om.writeValueAsString(detailMap);
+                    return new com.hlag.sourceviewer.domain.model.source.TokenDetail(
+                            td.fileIdentifier(), td.line(), td.columnStart(), td.detailType(), newJson);
+                }
+            }
+            // Fallback: HoverTextParser handles "static final String DOMAIN" (no class qualifier)
+            HoverTextParser.ParsedDetail hoverParsed = HoverTextParser.parse(javaCode);
+            if (hoverParsed != null
+                    && hoverParsed.detail() instanceof com.hlag.sourceviewer.domain.model.source.detail.VariableDetail vd
+                    && vd.typeFqn() != null) {
+                String resolved = resolveRawTypeName(vd.typeFqn(), importMap, packagePrefix);
                 if (resolved != null) {
                     detailMap.put("typeFqn", resolved);
                     String newJson = om.writeValueAsString(detailMap);
@@ -931,7 +991,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                 // TODO: need better handling if not all eithers are "right"
                 for (Either<SymbolInformation, DocumentSymbol> either : result) {
                     if (either.isRight()) {
-                        flattenDocumentSymbol(fileId, either.getRight(), proposedPackagePrefix, symbols);
+                        flattenDocumentSymbol(fileId, either.getRight(), proposedPackagePrefix, null, symbols);
                     } else {
                         logger.warn("Received 'left' for DocumentSymbolParams.");
                         symbolFromSymbolInformation(fileId, either.getLeft(), proposedPackagePrefix).ifPresent(symbols::add);
@@ -948,7 +1008,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                         .map(Either::getRight)
                         .filter(ds -> ds.getKind() != org.eclipse.lsp4j.SymbolKind.Package)
                         .forEach(documentSymbol ->
-                                flattenDocumentSymbol(fileId, documentSymbol, packagePrefix, symbols));
+                                flattenDocumentSymbol(fileId, documentSymbol, packagePrefix, null, symbols));
             }
             return symbols;
         } catch (Exception e) {
@@ -958,9 +1018,16 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     }
 
     private void flattenDocumentSymbol(FileIdentifier fileId, DocumentSymbol documentSymbol,
-                                       String parentFullQualifiedName, List<Symbol> out) {
+                                       String parentFullQualifiedName, SymbolKind parentKind,
+                                       List<Symbol> out) {
         org.eclipse.lsp4j.SymbolKind lspKind = documentSymbol.getKind();
         SymbolKind kind = mapLspSymbolKind(lspKind);
+        // JDTLS has no Parameter SymbolKind in LSP spec; parameters appear as Variable children of
+        // methods and constructors. Detect them by checking the parent's mapped kind.
+        if (kind == SymbolKind.LOCAL_VARIABLE
+                && (parentKind == SymbolKind.METHOD || parentKind == SymbolKind.CONSTRUCTOR)) {
+            kind = SymbolKind.PARAMETER;
+        }
         String languageKind = lspKind != null ? lspKind.name().toLowerCase(Locale.ROOT) : null;
 
         String fullQualifiedName = parentFullQualifiedName.isEmpty()
@@ -989,7 +1056,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
         if (documentSymbol.getChildren() != null) {
             for (DocumentSymbol child : documentSymbol.getChildren()) {
-                flattenDocumentSymbol(fileId, child, fullQualifiedName, out);
+                flattenDocumentSymbol(fileId, child, fullQualifiedName, kind, out);
             }
         }
     }

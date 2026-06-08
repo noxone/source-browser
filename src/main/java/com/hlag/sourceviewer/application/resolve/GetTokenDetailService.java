@@ -75,6 +75,11 @@ public class GetTokenDetailService implements GetTokenDetailUseCase {
                     enrichTypeHierarchy(qualifiedName, response);
                     response.put("knownSubtypes", buildSubtypeList(qualifiedName));
                 }
+            } else if ("TYPE_REF".equals(detailType)) {
+                String qualifiedName = (String) response.get("qualifiedName");
+                if (qualifiedName != null) {
+                    enrichTypeHierarchy(qualifiedName, response);
+                }
             } else if ("VARIABLE".equals(detailType)) {
                 String typeFqn = (String) response.get("typeFqn");
                 if (typeFqn != null) {
