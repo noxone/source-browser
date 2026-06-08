@@ -1,11 +1,11 @@
 package com.hlag.sourceviewer.application.scan.indexer;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail;
 import com.hlag.sourceviewer.domain.model.source.detail.MethodDetail;
 import com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType;
 import com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail;
 import com.hlag.sourceviewer.domain.model.source.detail.VariableDetail;
+import com.hlag.sourceviewer.domain.port.outgoing.JsonSerializer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,8 +19,6 @@ import java.util.regex.Pattern;
  * signature or type description. This class maps those strings to typed detail records.</p>
  */
 class HoverTextParser {
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // @interface FQN — annotation type
     private static final Pattern ANNOTATION_TYPE =
@@ -162,11 +160,7 @@ class HoverTextParser {
     }
 
     /** Serializes a detail POJO to a JSON string for storage in token_detail.detail. */
-    static String toJson(Object detail) {
-        try {
-            return MAPPER.writeValueAsString(detail);
-        } catch (Exception e) {
-            return "{}";
-        }
+    static String toJson(Object detail, JsonSerializer jsonMapper) {
+        return jsonMapper.serialize(detail);
     }
 }

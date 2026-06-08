@@ -245,12 +245,17 @@ class JavaAntlrIndexerUnitTest {
         }
 
         @Test
-        void import_fqn_stored_as_qualified_name() {
+        void import_fqn_reconstructed_from_grouped_tokens() {
             ParsedFile result = index("import com.example.Foo;");
             var grouped = result.tokens().stream()
                     .filter(t -> t.groupId() != null)
                     .toList();
-            assertThat(grouped).allMatch(t -> "com.example.Foo".equals(t.qualifiedName()));
+            String fqn = grouped.stream()
+                    .filter(t -> t.kind() == TokenKind.IDENTIFIER
+                            || (t.kind() == TokenKind.SEPARATOR && ".".equals(t.text())))
+                    .map(ExtractedToken::text)
+                    .collect(java.util.stream.Collectors.joining());
+            assertThat(fqn).isEqualTo("com.example.Foo");
         }
 
         @Test

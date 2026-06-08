@@ -25,6 +25,7 @@ import com.hlag.sourceviewer.application.scan.lsp.DiagnosticsCapable;
 import com.hlag.sourceviewer.application.scan.lsp.LanguageServerSession;
 import com.hlag.sourceviewer.application.scan.lsp.LspManager;
 import com.hlag.sourceviewer.application.scan.lsp.LspProjectContext;
+import com.hlag.sourceviewer.domain.port.outgoing.JsonSerializer;
 import com.hlag.sourceviewer.domain.model.identifier.ColumnNumber;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.FilePath;
@@ -120,15 +121,21 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     }
 
     private final LspManager lspManager;
+    private final JsonSerializer jsonMapper;
 
     @Inject
-    public JavaAntlrIndexer(LspManager lspManager) {
+    public JavaAntlrIndexer(LspManager lspManager, JsonSerializer jsonMapper) {
         this.lspManager = lspManager;
+        this.jsonMapper = jsonMapper;
     }
 
     /** No-arg constructor for CDI proxy and unit-test construction without LSP. */
     JavaAntlrIndexer() {
         this.lspManager = null;
+        this.jsonMapper = new com.hlag.sourceviewer.domain.port.outgoing.JsonSerializer() {
+            @Override public java.util.Map<String, Object> parseToMap(String json) { return java.util.Map.of(); }
+            @Override public String serialize(Object object) { return "{}"; }
+        };
     }
 
     @Override
@@ -457,7 +464,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         return qualifierFqn + "." + tokens.get(index).text();
     }
 
-    private static com.hlag.sourceviewer.domain.model.source.TokenDetail buildDetailFromSymbol(
+    private com.hlag.sourceviewer.domain.model.source.TokenDetail buildDetailFromSymbol(
             FileIdentifier fileId, ExtractedToken token, Symbol sym,
             Map<String, String> importMap, String packagePrefix,
             Map<String, List<Symbol>> paramsByMethod) {
@@ -531,10 +538,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             ExtractedToken token, Map<String, String> importMap, String packagePrefix) {
         if (!"VARIABLE".equals(td.detailType())) return td;
         try {
-            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
-            com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>> mapType =
-                    new com.fasterxml.jackson.core.type.TypeReference<>() {};
-            java.util.Map<String, Object> detailMap = om.readValue(td.detail(), mapType);
+            java.util.Map<String, Object> detailMap = jsonMapper.parseToMap(td.detail());
             if (detailMap.get("typeFqn") != null) return td; // already resolved
             String javaCode = fetchJavaHoverCode(session, textDocId, token);
             if (javaCode == null) return td;
@@ -547,7 +551,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                 String resolved = resolveRawTypeName(rawType, importMap, packagePrefix);
                 if (resolved != null) {
                     detailMap.put("typeFqn", resolved);
-                    String newJson = om.writeValueAsString(detailMap);
+                    String newJson = jsonMapper.serialize(detailMap);
                     return new com.hlag.sourceviewer.domain.model.source.TokenDetail(
                             td.fileIdentifier(), td.line(), td.columnStart(), td.detailType(), newJson);
                 }
@@ -560,7 +564,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                 String resolved = resolveRawTypeName(vd.typeFqn(), importMap, packagePrefix);
                 if (resolved != null) {
                     detailMap.put("typeFqn", resolved);
-                    String newJson = om.writeValueAsString(detailMap);
+                    String newJson = jsonMapper.serialize(detailMap);
                     return new com.hlag.sourceviewer.domain.model.source.TokenDetail(
                             td.fileIdentifier(), td.line(), td.columnStart(), td.detailType(), newJson);
                 }
@@ -597,12 +601,12 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         };
     }
 
-    private static com.hlag.sourceviewer.domain.model.source.TokenDetail buildTokenDetail(
+    private com.hlag.sourceviewer.domain.model.source.TokenDetail buildTokenDetail(
             FileIdentifier fileId, ExtractedToken token,
             com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType type, Object detail) {
         return new com.hlag.sourceviewer.domain.model.source.TokenDetail(
                 fileId, token.line(), token.columnStart(),
-                type.name(), HoverTextParser.toJson(detail));
+                type.name(), HoverTextParser.toJson(detail, jsonMapper));
     }
 
     private String fetchJavaHoverCode(LanguageServerSession<?> session,
@@ -721,7 +725,7 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     }
 
     /** Creates TYPE_REF token details for every identifier in each non-wildcard import statement. */
-    private static List<com.hlag.sourceviewer.domain.model.source.TokenDetail> extractImportTokenDetails(
+    private List<com.hlag.sourceviewer.domain.model.source.TokenDetail> extractImportTokenDetails(
             List<ExtractedToken> tokens, FileIdentifier fileId, Map<String, String> importMap) {
 
         List<com.hlag.sourceviewer.domain.model.source.TokenDetail> result = new ArrayList<>();

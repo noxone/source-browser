@@ -1,7 +1,5 @@
 package com.hlag.sourceviewer.application.resolve;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hlag.sourceviewer.domain.model.identifier.FileIdentifier;
 import com.hlag.sourceviewer.domain.model.identifier.QualifiedName;
 import com.hlag.sourceviewer.domain.model.identifier.SymbolKind;
@@ -11,6 +9,7 @@ import com.hlag.sourceviewer.domain.port.incoming.GetTokenDetailUseCase;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.JsonSerializer;
 import com.hlag.sourceviewer.domain.port.outgoing.TokenDetailRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.TypeHierarchyRepository;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -25,14 +24,12 @@ import java.util.Optional;
 @ApplicationScoped
 public class GetTokenDetailService implements GetTokenDetailUseCase {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
-
     private final TokenDetailRepository tokenDetailRepository;
     private final TypeHierarchyRepository typeHierarchyRepository;
     private final SymbolRepository symbolRepository;
     private final SourceFileRepository sourceFileRepository;
     private final RepositoryStore repositoryStore;
+    private final JsonSerializer jsonMapper;
 
     @Inject
     public GetTokenDetailService(
@@ -40,12 +37,14 @@ public class GetTokenDetailService implements GetTokenDetailUseCase {
             TypeHierarchyRepository typeHierarchyRepository,
             SymbolRepository symbolRepository,
             SourceFileRepository sourceFileRepository,
-            RepositoryStore repositoryStore) {
+            RepositoryStore repositoryStore,
+            JsonSerializer jsonMapper) {
         this.tokenDetailRepository = tokenDetailRepository;
         this.typeHierarchyRepository = typeHierarchyRepository;
         this.symbolRepository = symbolRepository;
         this.sourceFileRepository = sourceFileRepository;
         this.repositoryStore = repositoryStore;
+        this.jsonMapper = jsonMapper;
     }
 
     @Override
@@ -54,12 +53,7 @@ public class GetTokenDetailService implements GetTokenDetailUseCase {
             Map<String, Object> response = new LinkedHashMap<>();
             response.put("detailType", td.detailType());
 
-            try {
-                Map<String, Object> detail = MAPPER.readValue(td.detail(), MAP_TYPE);
-                response.putAll(detail);
-            } catch (Exception ignored) {
-                // stored detail is invalid JSON — return bare detailType
-            }
+            response.putAll(jsonMapper.parseToMap(td.detail()));
 
             String detailType = td.detailType();
             if ("METHOD_CALL".equals(detailType) || "METHOD_DECL".equals(detailType)) {

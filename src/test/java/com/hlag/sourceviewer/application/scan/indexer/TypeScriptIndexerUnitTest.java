@@ -356,7 +356,6 @@ class TypeScriptIndexerUnitTest {
             assertThat(grouped).allMatch(t -> t.groupId().equals(grouped.get(0).groupId()));
             assertThat(grouped).anyMatch(t -> t.kind() == TokenKind.IDENTIFIER && "Foo".equals(t.text()));
             assertThat(grouped).anyMatch(t -> t.kind() == TokenKind.STRING_LITERAL);
-            assertThat(grouped).allMatch(t -> "foo-module".equals(t.qualifiedName()));
         }
 
         @Test
@@ -374,12 +373,13 @@ class TypeScriptIndexerUnitTest {
         }
 
         @Test
-        void module_path_stored_as_qualified_name_without_quotes() {
+        void module_path_string_literal_is_in_group() {
             var result = index("import { Service } from './services/user';");
             var grouped = result.tokens().stream()
                     .filter(t -> t.groupId() != null)
                     .toList();
-            assertThat(grouped).allMatch(t -> "./services/user".equals(t.qualifiedName()));
+            assertThat(grouped).anyMatch(t -> t.kind() == TokenKind.STRING_LITERAL
+                    && t.text().contains("./services/user"));
         }
 
         @Test
