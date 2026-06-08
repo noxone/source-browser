@@ -287,6 +287,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         try {
             if (!indexerContexts.isEmpty()) {
                 runBatchLoop(scanJob.identifier(), toIndex, repository.name().value(), "symbol",
+                        false,  // collection is slow; indexSymbolBatch owns its storage transaction
                         batch -> indexSymbolBatch(batch, scanJob, repository, targetSha, indexerContexts));
             } else {
                 logger.info("No symbol indexers available for repository '{}'", repository.name().value());
@@ -307,13 +308,21 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         return indexed;
     }
 
+    private record CollectedFile(FileIdentifier fileId, ParsedFile parsedFile) {}
+
     /**
      * Runs a batch loop over {@code files} with adaptive batch-size halving on timeout.
      * Returns the total count returned by {@code batchAction} (meaningful for Phase 1;
      * Phase 2 can ignore the return value).
+     *
+     * <p>When {@code wrapInTransaction} is {@code true} (the default), each batch is executed
+     * inside a new JTA transaction. When {@code false}, the batch action is responsible for
+     * managing its own transaction(s) — use this when the action performs expensive non-DB
+     * work before storing, so that the transaction does not time out during collection.</p>
      */
     private int runBatchLoop(ScanJobIdentifier jobIdentifier, List<FilePath> files,
-                             String repositoryName, String phase, BatchAction batchAction) {
+                             String repositoryName, String phase, boolean wrapInTransaction,
+                             BatchAction batchAction) {
         int currentBatchSize = Integer.parseInt(manageAppSettings.getSetting(
                 ManageAppSettingsUseCase.SETTING_SCAN_BATCH_SIZE,
                 ManageAppSettingsUseCase.DEFAULT_SCAN_BATCH_SIZE));
@@ -323,10 +332,18 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             List<FilePath> batch = files.subList(indexInFiles, Math.min(indexInFiles + currentBatchSize, files.size()));
             AtomicInteger batchCount = new AtomicInteger(0);
             try {
-                runInNewTransaction(() -> batchCount.set(batchAction.run(batch)));
+                if (wrapInTransaction) {
+                    runInNewTransaction(() -> batchCount.set(batchAction.run(batch)));
+                } else {
+                    batchCount.set(batchAction.run(batch));
+                }
                 updateHeartbeat(jobIdentifier);
                 numberOfProcessedFiles += batchCount.get();
                 indexInFiles += batch.size();
+                logger.info("[{}] {}: {}/{} files done ({}%)",
+                        repositoryName, phase,
+                        numberOfProcessedFiles, files.size(),
+                        files.isEmpty() ? 100 : numberOfProcessedFiles * 100 / files.size());
             } catch (TransactionTimeoutException e) {
                 if (batch.size() <= 1) {
                     throw e;
@@ -341,6 +358,11 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
             }
         }
         return numberOfProcessedFiles;
+    }
+
+    private int runBatchLoop(ScanJobIdentifier jobIdentifier, List<FilePath> files,
+                             String repositoryName, String phase, BatchAction batchAction) {
+        return runBatchLoop(jobIdentifier, files, repositoryName, phase, true, batchAction);
     }
 
     private int indexDocumentBatch(List<FilePath> filePaths, ScanJob scanJob, Repository repository,
@@ -403,7 +425,10 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                                  CommitSha targetSha,
                                  Map<String, SelectedIndexerContext> indexerContexts) {
         var branch = repository.defaultBranch();
-        int numberOfWorkedFiles = 0;
+        var scanJobId = scanJob.identifier().value();
+
+        // ── Phase 1: collection (no transaction — parsing can be very slow) ──
+        List<CollectedFile> collected = new ArrayList<>();
         for (var filePath : filePaths) {
             try {
                 var indexerContext = indexerContexts.values().stream()
@@ -423,20 +448,35 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 }
                 logger.debug("Indexing symbols of {}: {}", indexerContext.get().indexer().supportedLanguage(), filePath.value());
                 var fileId = sourceFileOpt.get().identifier();
-                var scanJobId = scanJob.identifier().value();
                 var parsedFile = indexerContext.get().index(fileId, filePath, contentOpt.get());
-                storeSymbols(parsedFile, fileId, scanJobId, repository, branch);
-                storeTokenStream(parsedFile, fileId, scanJobId);
-                numberOfWorkedFiles++;
+                collected.add(new CollectedFile(fileId, parsedFile));
             } catch (Exception e) {
-                if (isTransactionRollbackPending()) {
-                    throw new TransactionTimeoutException("Symbol indexing aborted: transaction timeout after " + numberOfWorkedFiles + " files", e);
-                }
-                logger.warn("Failed to index symbols for '{}' in repository '{}': {}",
+                logger.warn("Failed to collect symbols for '{}' in repository '{}': {}",
                         filePath.value(), repository.name().value(), e.getMessage());
             }
         }
-        return numberOfWorkedFiles;
+
+        // ── Phase 2: storage (inside one new transaction — fast DB inserts only) ──
+        if (!collected.isEmpty()) {
+            AtomicInteger stored = new AtomicInteger(0);
+            runInNewTransaction(() -> {
+                for (var r : collected) {
+                    try {
+                        storeSymbols(r.parsedFile(), r.fileId(), scanJobId, repository, branch);
+                        storeTokenStream(r.parsedFile(), r.fileId(), scanJobId);
+                        stored.incrementAndGet();
+                    } catch (Exception e) {
+                        if (isTransactionRollbackPending()) {
+                            throw new TransactionTimeoutException(
+                                    "Symbol storage aborted: transaction timeout after " + stored.get() + " files", e);
+                        }
+                        logger.warn("Failed to store symbols for file in repository '{}': {}",
+                                repository.name().value(), e.getMessage());
+                    }
+                }
+            });
+        }
+        return collected.size();
     }
 
     private void storeSymbols(ParsedFile parsed, FileIdentifier fileId, Long scanJobId,
