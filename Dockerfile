@@ -40,7 +40,7 @@ RUN set -eux; \
 # ── Stage 3: Runtime ───────────────────────────────────────────────────────────
 # Full JDK (not JRE) is required because JDTLS runs as a Java subprocess that
 # needs the full JDK toolchain to compile and analyse Java source files.
-FROM eclipse-temurin:21-jdk-jammy
+FROM eclipse-temurin:21.0.11_10-jdk-jammy
 
 RUN groupadd -r sourceviewer \
     && useradd -r -g sourceviewer -d /app -s /sbin/nologin sourceviewer
