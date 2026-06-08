@@ -54,6 +54,12 @@ class HoverTextParser {
             return null;
         }
         String code = javaHoverCode.strip();
+        // Strip field/variable initializer that JDTLS sometimes appends to hover text,
+        // e.g. "private static final String DOMAIN = \"value\"" → "private static final String DOMAIN"
+        int assignIdx = code.indexOf(" = ");
+        if (assignIdx > 0) {
+            code = code.substring(0, assignIdx).strip();
+        }
 
         // @interface → annotation
         Matcher m = ANNOTATION_TYPE.matcher(code);
