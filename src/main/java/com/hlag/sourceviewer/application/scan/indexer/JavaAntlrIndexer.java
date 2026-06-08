@@ -265,10 +265,23 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         // Build import map once — shared by detail extraction and hierarchy extraction
         Map<String, String> importMap = buildImportMap(parsedFile.tokens());
 
+        // Build params-by-method map for METHOD_DECL parameter info
+        Map<String, List<Symbol>> paramsByMethod = new HashMap<>();
+        for (Symbol sym : symbols) {
+            if (sym.kind() == com.hlag.sourceviewer.domain.model.identifier.SymbolKind.PARAMETER) {
+                String fqn = sym.qualifiedName().value();
+                int lastDot = fqn.lastIndexOf('.');
+                if (lastDot > 0) {
+                    paramsByMethod.computeIfAbsent(fqn.substring(0, lastDot), k -> new ArrayList<>()).add(sym);
+                }
+            }
+        }
+
         // Phase 2c: Token detail extraction via LSP hover + import map fallback
         List<com.hlag.sourceviewer.domain.model.source.TokenDetail> tokenDetails =
                 extractTokenDetails(session, textDocId, fileId, parsedFile.tokens(),
-                        declarationPositions, symbolsByPosition, importMap, filename);
+                        declarationPositions, symbolsByPosition, importMap, packagePrefix,
+                        paramsByMethod, filename);
         // Phase 2c2: import-identifier details (always clickable without hover)
         tokenDetails.addAll(extractImportTokenDetails(parsedFile.tokens(), fileId, importMap));
         logger.debug("[JDTLS] {}: {} token details extracted", filename, tokenDetails.size());
@@ -297,6 +310,8 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             Set<String> declarationPositions,
             Map<String, Symbol> symbolsByPosition,
             Map<String, String> importMap,
+            String packagePrefix,
+            Map<String, List<Symbol>> paramsByMethod,
             String filename) {
 
         // Detect annotation token positions: IDENTIFIER immediately preceded by '@'
@@ -331,8 +346,12 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                 Symbol sym = symbolsByPosition.get(posKey);
                 if (sym != null) {
                     com.hlag.sourceviewer.domain.model.source.TokenDetail td =
-                            buildDetailFromSymbol(fileId, token, sym, importMap);
-                    if (td != null) result.add(td);
+                            buildDetailFromSymbol(fileId, token, sym, importMap, packagePrefix, paramsByMethod);
+                    if (td != null) {
+                        // For field/parameter declarations where typeFqn is still null, try hover as fallback
+                        td = enrichVariableTypeFromHover(td, session, textDocId, token, importMap, packagePrefix);
+                        result.add(td);
+                    }
                 }
                 continue;
             }
@@ -364,9 +383,8 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             }
 
             if (javaCode == null) {
-                // Hover returned nothing — fall back to import map or java.lang for type references
-                String fqn = importMap.get(token.text());
-                if (fqn == null) fqn = javaLangFqn(token.text());
+                // Hover returned nothing — fall back to import map / java.lang / same-package for type refs
+                String fqn = resolveTypeRef(token.text(), importMap, packagePrefix);
                 if (fqn != null) {
                     result.add(buildTokenDetail(fileId, token,
                             com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
@@ -377,14 +395,11 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
             HoverTextParser.ParsedDetail parsed = HoverTextParser.parse(javaCode);
             if (parsed != null) {
-                // Resolve simple declaringClass to FQN for method details
-                Object detail = resolveDetailFqns(parsed.detail(), importMap);
+                Object detail = resolveDetailFqns(parsed.detail(), importMap, packagePrefix);
                 result.add(buildTokenDetail(fileId, token, parsed.type(), detail));
             } else {
-                // Hover code present but unparseable (e.g. class declaration prefixed by annotations).
-                // Fall back to import map / java.lang lookup for type references.
-                String fqn = importMap.get(token.text());
-                if (fqn == null) fqn = javaLangFqn(token.text());
+                // Hover code present but unparseable — fall back to import map / same-package
+                String fqn = resolveTypeRef(token.text(), importMap, packagePrefix);
                 if (fqn != null) {
                     result.add(buildTokenDetail(fileId, token,
                             com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
@@ -396,7 +411,9 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     }
 
     private static com.hlag.sourceviewer.domain.model.source.TokenDetail buildDetailFromSymbol(
-            FileIdentifier fileId, ExtractedToken token, Symbol sym, Map<String, String> importMap) {
+            FileIdentifier fileId, ExtractedToken token, Symbol sym,
+            Map<String, String> importMap, String packagePrefix,
+            Map<String, List<Symbol>> paramsByMethod) {
         com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType type;
         Object detail;
         switch (sym.kind()) {
@@ -405,38 +422,38 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
                 detail = new com.hlag.sourceviewer.domain.model.source.detail.TypeDeclDetail(
                         sym.qualifiedName().value(),
                         sym.kind().name(),
-                        null,   // superclassFqn — filled in by extractTypeHierarchy
+                        null,   // superclassFqn — filled in by type_hierarchy at query time
                         List.of());
             }
             case METHOD, CONSTRUCTOR -> {
                 type = com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.METHOD_DECL;
+                boolean isCtor = sym.kind() == com.hlag.sourceviewer.domain.model.identifier.SymbolKind.CONSTRUCTOR;
+                String declaringClass = sym.qualifiedName().value().contains(".")
+                        ? sym.qualifiedName().value().substring(0, sym.qualifiedName().value().lastIndexOf('.'))
+                        : null;
+                List<com.hlag.sourceviewer.domain.model.source.detail.MethodDetail.MethodParam> params =
+                        buildMethodParams(sym.qualifiedName().value(), paramsByMethod, importMap, packagePrefix);
                 detail = new com.hlag.sourceviewer.domain.model.source.detail.MethodDetail(
-                        token.text(),
-                        sym.qualifiedName().value().contains(".")
-                                ? sym.qualifiedName().value().substring(0,
-                                        sym.qualifiedName().value().lastIndexOf('.'))
-                                : null,
-                        null, List.of());
+                        token.text(), declaringClass, null, params, isCtor);
             }
             case FIELD, CONSTANT, ENUM_CONSTANT -> {
                 type = com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.VARIABLE;
-                // JDTLS stores the field type in DocumentSymbol.getDetail(), which is mapped to sym.signature()
                 String rawType = sym.signature().map(s -> s.value()).orElse(null);
-                String typeFqn = resolveRawTypeName(rawType, importMap);
-                detail = new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(
-                        token.text(), "FIELD", typeFqn);
+                String typeFqn = resolveRawTypeName(rawType, importMap, packagePrefix);
+                String variableKind = sym.kind() == com.hlag.sourceviewer.domain.model.identifier.SymbolKind.ENUM_CONSTANT
+                        ? "ENUM_CONSTANT"
+                        : sym.kind() == com.hlag.sourceviewer.domain.model.identifier.SymbolKind.CONSTANT ? "CONSTANT" : "FIELD";
+                detail = new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(token.text(), variableKind, typeFqn);
             }
             case LOCAL_VARIABLE -> {
                 type = com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.VARIABLE;
-                detail = new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(
-                        token.text(), "LOCAL", null);
+                detail = new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(token.text(), "LOCAL", null);
             }
             case PARAMETER -> {
                 type = com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.VARIABLE;
                 String rawType = sym.signature().map(s -> s.value()).orElse(null);
-                String typeFqn = resolveRawTypeName(rawType, importMap);
-                detail = new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(
-                        token.text(), "PARAMETER", typeFqn);
+                String typeFqn = resolveRawTypeName(rawType, importMap, packagePrefix);
+                detail = new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(token.text(), "PARAMETER", typeFqn);
             }
             default -> {
                 return null;
@@ -445,12 +462,59 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         return buildTokenDetail(fileId, token, type, detail);
     }
 
+    private static List<com.hlag.sourceviewer.domain.model.source.detail.MethodDetail.MethodParam> buildMethodParams(
+            String methodFqn, Map<String, List<Symbol>> paramsByMethod,
+            Map<String, String> importMap, String packagePrefix) {
+        List<Symbol> params = paramsByMethod.getOrDefault(methodFqn, List.of());
+        if (params.isEmpty()) return List.of();
+        return params.stream()
+                .map(p -> {
+                    String rawType = p.signature().map(s -> s.value()).orElse(null);
+                    String typeName = resolveRawTypeName(rawType, importMap, packagePrefix);
+                    return new com.hlag.sourceviewer.domain.model.source.detail.MethodDetail.MethodParam(
+                            p.name().value(), typeName != null ? typeName : (rawType != null ? rawType : "?"));
+                })
+                .toList();
+    }
+
+    /** Tries to call hover for a VARIABLE declaration whose typeFqn is still null. */
+    private com.hlag.sourceviewer.domain.model.source.TokenDetail enrichVariableTypeFromHover(
+            com.hlag.sourceviewer.domain.model.source.TokenDetail td,
+            LanguageServerSession<?> session, TextDocumentIdentifier textDocId,
+            ExtractedToken token, Map<String, String> importMap, String packagePrefix) {
+        if (!"VARIABLE".equals(td.detailType())) return td;
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>> mapType =
+                    new com.fasterxml.jackson.core.type.TypeReference<>() {};
+            java.util.Map<String, Object> detailMap = om.readValue(td.detail(), mapType);
+            if (detailMap.get("typeFqn") != null) return td; // already resolved
+            String javaCode = fetchJavaHoverCode(session, textDocId, token);
+            if (javaCode == null) return td;
+            // Try FIELD_WITH_CLASS: "modifiers type DeclaringClass.fieldName"
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("^(?:[\\w ]+?\\s+)?(\\S+)\\s+(?:[\\w$]+\\.)+[\\w$]+$")
+                    .matcher(javaCode);
+            if (m.find()) {
+                String rawType = m.group(1);
+                String resolved = resolveRawTypeName(rawType, importMap, packagePrefix);
+                if (resolved != null) {
+                    detailMap.put("typeFqn", resolved);
+                    String newJson = om.writeValueAsString(detailMap);
+                    return new com.hlag.sourceviewer.domain.model.source.TokenDetail(
+                            td.fileIdentifier(), td.line(), td.columnStart(), td.detailType(), newJson);
+                }
+            }
+        } catch (Exception ignored) {}
+        return td;
+    }
+
     /**
      * Resolves a raw type name (as returned by JDTLS DocumentSymbol.getDetail()) to a FQN.
-     * Strips generics and array brackets, then checks the import map and java.lang.
-     * Returns null for primitive types and unresolvable names.
+     * Strips generics and array brackets, then checks the import map, java.lang, and same-package.
+     * Returns the primitive name for primitives (useful for display). Returns null for empty/blank.
      */
-    private static String resolveRawTypeName(String rawType, Map<String, String> importMap) {
+    private static String resolveRawTypeName(String rawType, Map<String, String> importMap, String packagePrefix) {
         if (rawType == null || rawType.isBlank()) return null;
         // Strip generics and arrays: "List<String>" → "List", "String[]" → "String"
         String base = rawType;
@@ -460,11 +524,10 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         if (idx >= 0) base = base.substring(0, idx);
         base = base.strip();
         if (base.isEmpty()) return null;
-        if (isPrimitive(base)) return null;
+        if (isPrimitive(base)) return base; // display as-is, no navigation link possible
         if (base.contains(".")) return base; // already qualified
-        String fqn = importMap.get(base);
-        if (fqn != null) return fqn;
-        return javaLangFqn(base); // null if not java.lang
+        String resolved = resolveTypeRef(base, importMap, packagePrefix);
+        return resolved != null ? resolved : base; // return simple name as fallback for display
     }
 
     private static boolean isPrimitive(String name) {
@@ -546,52 +609,83 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         return fallback;
     }
 
-    /** Resolves simple-name FQN fields in a parsed detail using the import map. */
-    private static Object resolveDetailFqns(Object detail, Map<String, String> importMap) {
+    /** Resolves simple-name FQN fields in a parsed detail using the import map and package prefix. */
+    private static Object resolveDetailFqns(Object detail, Map<String, String> importMap, String packagePrefix) {
         if (detail instanceof com.hlag.sourceviewer.domain.model.source.detail.MethodDetail md) {
             String dc = md.declaringClass();
             if (dc != null && !dc.contains(".")) {
-                dc = importMap.getOrDefault(dc, dc);
+                dc = resolveTypeRef(dc, importMap, packagePrefix);
+                if (dc == null) dc = md.declaringClass();
             }
             if (!Objects.equals(dc, md.declaringClass())) {
                 return new com.hlag.sourceviewer.domain.model.source.detail.MethodDetail(
-                        md.name(), dc, md.returnType(), md.parameters());
+                        md.name(), dc, md.returnType(), md.parameters(), md.isConstructor());
             }
         } else if (detail instanceof com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail tr) {
             String fqn = tr.qualifiedName();
             if (!fqn.contains(".")) {
-                String resolved = importMap.get(fqn);
-                if (resolved == null) resolved = javaLangFqn(fqn);
-                if (resolved != null) {
-                    return new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(resolved, tr.kind());
-                }
+                String resolved = resolveTypeRef(fqn, importMap, packagePrefix);
+                if (resolved != null) return new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(resolved, tr.kind());
+            }
+        } else if (detail instanceof com.hlag.sourceviewer.domain.model.source.detail.VariableDetail vd) {
+            String typeFqn = vd.typeFqn();
+            if (typeFqn != null && !typeFqn.contains(".")) {
+                String resolved = resolveTypeRef(typeFqn, importMap, packagePrefix);
+                if (resolved != null) return new com.hlag.sourceviewer.domain.model.source.detail.VariableDetail(vd.name(), vd.variableKind(), resolved);
             }
         }
         return detail;
     }
 
-    /** Creates TYPE_REF token details for the last identifier in each non-wildcard import statement. */
+    /**
+     * Resolves a simple type name to a FQN using: import map → java.lang → same package.
+     * Returns null if the name is a primitive or cannot be resolved.
+     */
+    private static String resolveTypeRef(String name, Map<String, String> importMap, String packagePrefix) {
+        if (name == null || name.isBlank() || name.contains(".")) return name;
+        String fqn = importMap.get(name);
+        if (fqn != null) return fqn;
+        fqn = javaLangFqn(name);
+        if (fqn != null) return fqn;
+        if (looksLikeClassName(name) && packagePrefix != null && !packagePrefix.isEmpty()) {
+            return packagePrefix + name;
+        }
+        return null;
+    }
+
+    /** True if the name looks like a Java class name (starts uppercase, not ALL_CAPS constant). */
+    private static boolean looksLikeClassName(String name) {
+        if (name == null || name.isEmpty() || !Character.isUpperCase(name.charAt(0))) return false;
+        // ALL_CAPS identifiers (e.g. CLASS_BODY_UNKNOWN, DOMAIN) are constants, not class names
+        return !name.equals(name.toUpperCase(java.util.Locale.ROOT));
+    }
+
+    /** Creates TYPE_REF token details for every identifier in each non-wildcard import statement. */
     private static List<com.hlag.sourceviewer.domain.model.source.TokenDetail> extractImportTokenDetails(
             List<ExtractedToken> tokens, FileIdentifier fileId, Map<String, String> importMap) {
 
         List<com.hlag.sourceviewer.domain.model.source.TokenDetail> result = new ArrayList<>();
         for (int i = 0; i < tokens.size(); i++) {
             if (!tokens.get(i).is(KEYWORD, "import")) continue;
-            // Collect tokens of this import statement up to ';', look for last identifier
-            ExtractedToken lastIdent = null;
+            // Collect all identifiers in this import statement, determine the FQN
+            List<ExtractedToken> identifiers = new ArrayList<>();
             boolean wildcard = false;
             for (int j = i + 1; j < tokens.size(); j++) {
                 ExtractedToken t = tokens.get(j);
                 if (t.is(SEPARATOR, ";")) break;
                 if (t.is(OPERATOR, "*")) { wildcard = true; break; }
-                if (t.is(IDENTIFIER)) lastIdent = t;
+                if (t.is(IDENTIFIER)) identifiers.add(t);
             }
-            if (!wildcard && lastIdent != null) {
-                String fqn = importMap.get(lastIdent.text());
+            if (!wildcard && !identifiers.isEmpty()) {
+                // The FQN is keyed by the last identifier (the type's simple name)
+                String fqn = importMap.get(identifiers.getLast().text());
                 if (fqn != null) {
-                    result.add(buildTokenDetail(fileId, lastIdent,
-                            com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
-                            new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS")));
+                    // Make every identifier in the import clickable, all pointing to the same type
+                    for (ExtractedToken ident : identifiers) {
+                        result.add(buildTokenDetail(fileId, ident,
+                                com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                                new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS")));
+                    }
                 }
             }
         }

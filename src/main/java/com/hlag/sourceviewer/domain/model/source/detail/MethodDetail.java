@@ -7,7 +7,8 @@ public record MethodDetail(
         String name,
         String declaringClass,
         String returnType,
-        List<MethodParam> parameters) {
+        List<MethodParam> parameters,
+        boolean isConstructor) {
 
     public record MethodParam(String name, String type) {}
 }

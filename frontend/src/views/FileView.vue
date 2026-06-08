@@ -24,6 +24,8 @@
           :key="line.number"
           class="line"
           :data-line="line.number"
+          :class="line.number === highlightedLine ? 'bg-yellow-50' : ''"
+          :ref="line.number === highlightedLine ? 'highlightedLineEl' : undefined"
         ><template v-if="fileInfo?.hasTokenStream"><span
               v-for="(token, ti) in line.tokens"
               :key="ti"
@@ -205,7 +207,7 @@
           <template v-else-if="methodDetail">
             <div class="mb-2">
               <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-200 text-indigo-800">
-                {{ methodDetail.detailType === 'METHOD_DECL' ? 'Method declaration' : 'Method call' }}
+                {{ methodDetail.isConstructor ? 'Constructor' : (methodDetail.detailType === 'METHOD_DECL' ? 'Method declaration' : 'Method call') }}
               </span>
             </div>
             <dl class="space-y-2 text-sm">
@@ -229,7 +231,14 @@
             <div v-if="methodDetail.overloads?.length" class="mt-3 pt-3 border-t border-indigo-100">
               <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Overloads</p>
               <ul class="space-y-1">
-                <li v-for="o in methodDetail.overloads" :key="o" class="font-mono text-xs text-gray-700">{{ o }}</li>
+                <li v-for="o in methodDetail.overloads" :key="o.signature" class="font-mono text-xs">
+                  <RouterLink
+                    v-if="o.repositoryName && o.filePath && o.lineStart"
+                    :to="fileLineRoute(o.repositoryName, o.filePath, o.lineStart)"
+                    class="text-indigo-600 hover:underline"
+                  >{{ o.signature }}</RouterLink>
+                  <span v-else class="text-gray-700">{{ o.signature }}</span>
+                </li>
               </ul>
             </div>
             <div v-if="methodDetail.implementations?.length" class="mt-3 pt-3 border-t border-indigo-100">
@@ -238,7 +247,7 @@
                 <li v-for="impl in methodDetail.implementations" :key="impl.qualifiedName" class="text-xs">
                   <RouterLink
                     v-if="impl.repositoryName && impl.filePath"
-                    :to="`/file/${encodeURIComponent(impl.repositoryName)}/${impl.filePath}`"
+                    :to="fileLineRoute(impl.repositoryName, impl.filePath, impl.lineStart)"
                     class="text-indigo-600 hover:underline font-mono break-all"
                   >{{ impl.filePath }}</RouterLink>
                   <span v-else class="font-mono text-gray-600 break-all">{{ impl.qualifiedName }}</span>
@@ -296,9 +305,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import type { FileInfo, Token, TokenKind, TokenDetail } from '../types/file'
+import type { FileInfo, Token, TokenKind, TokenDetail, MethodOverload } from '../types/file'
 import type { JavadocProvider } from '../types/javadoc-provider'
 import { getFileInfoByPath, getFileContent, getTokenStream, getTokenDetail } from '../api/files'
 import { listJavadocProviders } from '../api/javadoc'
@@ -342,6 +351,25 @@ const tokenDetail = ref<TokenDetail | null>(null)
 const detailLoading = ref(false)
 const javadocProviders = ref<JavadocProvider[]>([])
 const hoveredGroup = ref<number | null>(null)
+const highlightedLineEl = ref<HTMLElement | null>(null)
+
+const highlightedLine = computed(() => {
+  const line = route.query.line
+  return line ? parseInt(String(line), 10) : null
+})
+
+function fileLineRoute(repoName: string, filePath: string, lineStart?: number): string {
+  const base = `/file/${encodeURIComponent(repoName)}/${filePath}`
+  return lineStart != null ? `${base}?line=${lineStart}` : base
+}
+
+watch(highlightedLine, () => {
+  nextTick(() => {
+    if (highlightedLineEl.value) {
+      (highlightedLineEl.value as HTMLElement).scrollIntoView({ block: 'center' })
+    }
+  })
+}, { immediate: true })
 
 // Typed helpers to narrow the discriminated union in templates
 const typeDetail = computed(() =>

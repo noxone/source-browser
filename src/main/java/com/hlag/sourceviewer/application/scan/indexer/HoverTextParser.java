@@ -30,13 +30,15 @@ class HoverTextParser {
     private static final Pattern TYPE_KEYWORD =
             Pattern.compile("^(?:[\\w ]+\\s+)?(class|interface|enum|record)\\s+(\\S+)");
 
-    // ReturnType DeclaringClass.MethodName(params) — method with declaring class
+    // ReturnType DeclaringClass.MethodName(params) — method with declaring class.
+    // Uses lazy (\\S.*?) for return type to handle generics with spaces like "Class<? extends Foo>[]".
+    // Declaring class uses only word-chars+dots (no spaces) so the lazy match stops at the right boundary.
     private static final Pattern METHOD_WITH_CLASS =
-            Pattern.compile("^(\\S+)\\s+((?:[\\w$<>\\[\\],? ]+\\.)+)([\\w$]+)\\(([^)]*)\\)");
+            Pattern.compile("^(\\S.*?)\\s+((?:[\\w$]+\\.)+)([\\w$]+)\\(([^)]*)\\)");
 
     // ReturnType MethodName(params) — method without declaring class
     private static final Pattern METHOD_NO_CLASS =
-            Pattern.compile("^(\\S+)\\s+([\\w$]+)\\(([^)]*)\\)");
+            Pattern.compile("^(\\S.*?)\\s+([\\w$]+)\\(([^)]*)\\)");
 
     // Optional modifiers + Type + Class.FieldName — field with class qualifier
     private static final Pattern FIELD_WITH_CLASS =
@@ -83,7 +85,7 @@ class HoverTextParser {
             String methodName = m.group(3);
             List<MethodDetail.MethodParam> params = parseParams(m.group(4));
             return new ParsedDetail(TokenDetailType.METHOD_CALL,
-                    new MethodDetail(methodName, declaringClass, returnType, params));
+                    new MethodDetail(methodName, declaringClass, returnType, params, false));
         }
 
         // Field with class qualifier
@@ -105,7 +107,7 @@ class HoverTextParser {
             if (code.contains(methodName + "(")) {
                 List<MethodDetail.MethodParam> params = parseParams(m.group(3));
                 return new ParsedDetail(TokenDetailType.METHOD_CALL,
-                        new MethodDetail(methodName, null, returnType, params));
+                        new MethodDetail(methodName, null, returnType, params, false));
             }
         }
 

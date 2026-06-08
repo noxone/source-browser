@@ -40,17 +40,25 @@ export interface MethodParam {
   type: string
 }
 
+export interface MethodOverload {
+  signature: string
+  filePath?: string
+  repositoryName?: string
+  lineStart?: number
+}
+
 export interface MethodImpl {
   qualifiedName: string
   fileId: number
   filePath: string | null
   repositoryName: string | null
+  lineStart?: number
 }
 
 export type TokenDetail =
   | { detailType: 'TYPE_REF' | 'TYPE_DECL'; qualifiedName: string; kind: string; superclassFqn?: string; implementedInterfaces?: string[]; knownSubtypes?: Array<{ qualifiedName: string; relationshipKind: string }> }
   | { detailType: 'VARIABLE'; name: string; variableKind: string; typeFqn: string | null; typeFileId?: number; typeFilePath?: string; typeRepositoryName?: string; typeLineStart?: number }
-  | { detailType: 'METHOD_CALL' | 'METHOD_DECL'; name: string; declaringClass: string; returnType: string; parameters: MethodParam[]; overloads: string[]; implementations: MethodImpl[] }
+  | { detailType: 'METHOD_CALL' | 'METHOD_DECL'; name: string; declaringClass: string; returnType: string; parameters: MethodParam[]; overloads: MethodOverload[]; implementations: MethodImpl[]; isConstructor?: boolean }
   | { detailType: 'ANNOTATION'; qualifiedName: string }
   | { detailType: 'KEYWORD'; keyword: string; description: string | null }
 

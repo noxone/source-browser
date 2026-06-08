@@ -72,6 +72,7 @@ public class GetTokenDetailService implements GetTokenDetailUseCase {
             } else if ("TYPE_DECL".equals(detailType)) {
                 String qualifiedName = (String) response.get("qualifiedName");
                 if (qualifiedName != null) {
+                    enrichTypeHierarchy(qualifiedName, response);
                     response.put("knownSubtypes", buildSubtypeList(qualifiedName));
                 }
             } else if ("VARIABLE".equals(detailType)) {
@@ -97,13 +98,54 @@ public class GetTokenDetailService implements GetTokenDetailUseCase {
         });
     }
 
-    private List<String> findOverloads(String declaringClass, String methodName) {
+    private void enrichTypeHierarchy(String typeFqn, Map<String, Object> response) {
+        List<TypeHierarchyEntry> supertypes = typeHierarchyRepository.findSupertypes(typeFqn);
+        String superclassFqn = null;
+        List<String> interfaces = new ArrayList<>();
+        for (TypeHierarchyEntry entry : supertypes) {
+            if ("EXTENDS".equals(entry.relationshipKind())) {
+                superclassFqn = entry.supertypeFqn();
+            } else if ("IMPLEMENTS".equals(entry.relationshipKind())) {
+                interfaces.add(entry.supertypeFqn());
+            }
+        }
+        if (superclassFqn != null) response.put("superclassFqn", superclassFqn);
+        if (!interfaces.isEmpty()) response.put("implementedInterfaces", interfaces);
+    }
+
+    /** Returns overloads as structured objects with parameter types and file location. */
+    private List<Map<String, Object>> findOverloads(String declaringClass, String methodName) {
         String prefix = declaringClass + "." + methodName;
-        return symbolRepository.findByQualifiedNamePrefix(prefix).stream()
+        List<Symbol> allSymbols = symbolRepository.findByQualifiedNamePrefix(prefix);
+
+        // Index parameter symbols by method FQN
+        Map<String, List<Symbol>> paramsByMethod = new java.util.HashMap<>();
+        for (Symbol sym : allSymbols) {
+            if (sym.kind() == SymbolKind.PARAMETER) {
+                String fqn = sym.qualifiedName().value();
+                int lastDot = fqn.lastIndexOf('.');
+                if (lastDot > 0) {
+                    paramsByMethod.computeIfAbsent(fqn.substring(0, lastDot), k -> new ArrayList<>()).add(sym);
+                }
+            }
+        }
+
+        return allSymbols.stream()
                 .filter(s -> s.kind() == SymbolKind.METHOD || s.kind() == SymbolKind.CONSTRUCTOR)
-                .map(s -> {
-                    String sig = s.signature().map(ss -> ss.value()).orElse("()");
-                    return methodName + sig;
+                .map(m -> {
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    List<Symbol> params = paramsByMethod.getOrDefault(m.qualifiedName().value(), List.of());
+                    String paramStr = params.stream()
+                            .map(p -> p.signature().map(s -> s.value()).orElse("?") + " " + p.name().value())
+                            .collect(java.util.stream.Collectors.joining(", "));
+                    entry.put("signature", methodName + "(" + paramStr + ")");
+                    m.lineStart().ifPresent(l -> entry.put("lineStart", l.value()));
+                    sourceFileRepository.findByIdentifier(m.fileIdentifier()).ifPresent(sf -> {
+                        entry.put("filePath", sf.path().value());
+                        repositoryStore.findByIdentifier(sf.repositoryIdentifier())
+                                .ifPresent(r -> entry.put("repositoryName", r.name().value()));
+                    });
+                    return entry;
                 })
                 .toList();
     }
@@ -124,6 +166,7 @@ public class GetTokenDetailService implements GetTokenDetailUseCase {
         Map<String, Object> entry = new LinkedHashMap<>();
         entry.put("qualifiedName", method.qualifiedName().value());
         entry.put("fileId", method.fileIdentifier().value());
+        method.lineStart().ifPresent(l -> entry.put("lineStart", l.value()));
         sourceFileRepository.findByIdentifier(method.fileIdentifier()).ifPresent(sf -> {
             entry.put("filePath", sf.path().value());
             repositoryStore.findByIdentifier(sf.repositoryIdentifier())
