@@ -12,7 +12,7 @@ public class JdtlsVersionChecker {
     private static final Logger LOG = Logger.getLogger(JdtlsVersionChecker.class.getName());
 
     private static final int REQUIRED_MAJOR = 1;
-    private static final int REQUIRED_MINOR = 59;
+    private static final int REQUIRED_MINOR = 58;
 
     /**
      * Checks the jdtls version after initialize() and logs a warning if it's too old.
