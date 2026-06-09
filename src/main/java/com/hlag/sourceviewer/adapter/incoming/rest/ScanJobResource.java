@@ -93,4 +93,17 @@ public class ScanJobResource {
         manageScanJobsUseCase.deleteAllQueuedScanJobs();
         return Response.noContent().build();
     }
+
+    /**
+     * Deletes all scan jobs in {@code DONE} or {@code FAILED} status.
+     *
+     * @return 204 No Content
+     */
+    @DELETE
+    @Path("/finished")
+    public Response deleteAllFinishedScanJobs() {
+        logger.info("Deleting all finished scan jobs");
+        manageScanJobsUseCase.deleteFinishedScanJobs();
+        return Response.noContent().build();
+    }
 }

@@ -757,6 +757,16 @@
             </svg>
             Delete All Queued
           </button>
+          <button
+            @click="removeAllFinishedScanJobs"
+            :disabled="finishedScanJobCount === 0"
+            class="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-red-700 bg-white border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+            Delete All Finished
+          </button>
         </div>
       </div>
 
@@ -824,6 +834,7 @@
                 <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Queued At</th>
                 <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Started At</th>
+                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Heartbeat</th>
                 <th class="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -845,6 +856,7 @@
                 </td>
                 <td class="px-6 py-4 text-sm text-gray-500">{{ formatDate(job.queuedAt) }}</td>
                 <td class="px-6 py-4 text-sm text-gray-500">{{ job.startedAt ? formatDate(job.startedAt) : '—' }}</td>
+                <td class="px-6 py-4 text-sm text-gray-500">{{ job.lastHeartbeatAt ? formatDate(job.lastHeartbeatAt) : '—' }}</td>
                 <td class="px-6 py-4 text-right">
                   <button
                     @click="removeScanJob(job)"
@@ -1216,7 +1228,7 @@ import { triggerRepositoryScan } from '../api/repositories'
 import { triggerGroupScan } from '../api/git-provider-groups'
 import { listUserAccounts, updateUserAccount } from '../api/user-accounts'
 import { listServiceAccounts, deleteServiceAccount } from '../api/service-accounts'
-import { listScanJobs, deleteScanJob, deleteAllQueuedScanJobs } from '../api/scan-jobs'
+import { listScanJobs, deleteScanJob, deleteAllQueuedScanJobs, deleteAllFinishedScanJobs } from '../api/scan-jobs'
 import { listSettings, updateSetting, listStorageDirectories } from '../api/settings'
 import type { StorageDirectory } from '../types/storage-directory'
 import type { JavadocProvider } from '../types/javadoc-provider'
@@ -1697,6 +1709,18 @@ async function removeAllQueuedScanJobs() {
   }
 }
 
+async function removeAllFinishedScanJobs() {
+  const count = finishedScanJobCount.value
+  if (count === 0) return
+  if (!confirm(`Delete all ${count} finished scan job${count === 1 ? '' : 's'}? This cannot be undone.`)) return
+  try {
+    await deleteAllFinishedScanJobs()
+    await fetchScanJobs()
+  } catch (error) {
+    alert(error instanceof Error ? error.message : 'Failed to delete finished scan jobs')
+  }
+}
+
 /** Returns the human-readable repository name for a given ID, falling back to the raw ID. */
 function repositoryName(repositoryId: number): string {
   return repositories.value.find(r => r.id === repositoryId)?.name ?? `#${repositoryId}`
@@ -1715,7 +1739,8 @@ const STATUS_CLASSES: Record<string, string> = {
   FAILED:  'bg-red-50 text-red-700 border-red-200'
 }
 
-const queuedScanJobCount = computed(() => scanJobs.value.filter(j => j.status === 'QUEUED').length)
+const queuedScanJobCount   = computed(() => scanJobs.value.filter(j => j.status === 'QUEUED').length)
+const finishedScanJobCount = computed(() => scanJobs.value.filter(j => j.status === 'DONE' || j.status === 'FAILED').length)
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 

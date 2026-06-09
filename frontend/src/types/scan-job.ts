@@ -7,4 +7,5 @@ export interface ScanJob {
   queuedAt: string
   startedAt: string | null
   finishedAt: string | null
+  lastHeartbeatAt: string | null
 }

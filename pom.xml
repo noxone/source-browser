@@ -438,10 +438,15 @@
             <!--
                 Two-phase compilation to bootstrap the in-tree APT processor:
                 1. generate-sources: compile only the processor package (no APT),
-                   output → target/processor-classes
+                   output → target/classes  (the default outputDirectory).
+                   NOTE: a custom outputDirectory must NOT be used here because
+                   maven-compiler-plugin updates project.build.outputDirectory as
+                   a side effect, causing the Quarkus fast-jar plugin to package
+                   only that custom directory instead of all application classes.
                 2. compile: compile app sources (excluding the processor),
                    passing an explicit -processorpath that covers both
-                   target/processor-classes and mapstruct-processor.jar
+                   target/classes (where the processor now lives) and
+                   mapstruct-processor.jar
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -454,7 +459,6 @@
                         <goals><goal>compile</goal></goals>
                         <configuration>
                             <proc>none</proc>
-                            <outputDirectory>${project.build.directory}/processor-classes</outputDirectory>
                             <includes>
                                 <include>com/hlag/sourceviewer/processor/**</include>
                             </includes>
@@ -471,7 +475,7 @@
                             </excludes>
                             <compilerArgs>
                                 <arg>-processorpath</arg>
-                                <arg>${project.build.directory}/processor-classes${path.separator}${org.mapstruct:mapstruct-processor:jar}</arg>
+                                <arg>${project.build.outputDirectory}${path.separator}${org.mapstruct:mapstruct-processor:jar}</arg>
                                 <arg>-processor</arg>
                                 <arg>org.mapstruct.ap.MappingProcessor,com.hlag.sourceviewer.processor.ValueObjectConverterProcessor</arg>
                             </compilerArgs>

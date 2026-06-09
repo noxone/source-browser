@@ -35,4 +35,9 @@ public interface ManageScanJobsUseCase {
      * Deletes all scan jobs that are currently in {@code QUEUED} status.
      */
     void deleteAllQueuedScanJobs();
+
+    /**
+     * Deletes all scan jobs that are in {@code DONE} or {@code FAILED} status.
+     */
+    void deleteFinishedScanJobs();
 }

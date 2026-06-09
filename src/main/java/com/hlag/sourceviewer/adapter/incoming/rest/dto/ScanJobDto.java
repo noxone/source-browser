@@ -7,14 +7,15 @@ import java.time.Instant;
 /**
  * DTO representing a scan job returned by the admin API.
  *
- * @param id           the scan job database ID
- * @param repositoryId the ID of the repository being scanned
- * @param triggerType  how the scan was triggered (WEBHOOK, CRON, MANUAL)
- * @param commitSha    the specific commit SHA being scanned, or {@code null} for HEAD
- * @param status       the current status (QUEUED, RUNNING, DONE, FAILED)
- * @param queuedAt     when the job was enqueued
- * @param startedAt    when processing began, or {@code null} if not yet started
- * @param finishedAt   when processing completed, or {@code null} if not yet finished
+ * @param id                the scan job database ID
+ * @param repositoryId      the ID of the repository being scanned
+ * @param triggerType       how the scan was triggered (WEBHOOK, CRON, MANUAL)
+ * @param commitSha         the specific commit SHA being scanned, or {@code null} for HEAD
+ * @param status            the current status (QUEUED, RUNNING, DONE, FAILED)
+ * @param queuedAt          when the job was enqueued
+ * @param startedAt         when processing began, or {@code null} if not yet started
+ * @param finishedAt        when processing completed, or {@code null} if not yet finished
+ * @param lastHeartbeatAt   the last heartbeat timestamp, or {@code null} if no heartbeat received yet
  */
 public record ScanJobDto(
         Long id,
@@ -24,7 +25,8 @@ public record ScanJobDto(
         String status,
         Instant queuedAt,
         Instant startedAt,
-        Instant finishedAt
+        Instant finishedAt,
+        Instant lastHeartbeatAt
 ) {
     public static ScanJobDto from(ScanJob job) {
         return new ScanJobDto(
@@ -35,7 +37,8 @@ public record ScanJobDto(
                 job.status().name(),
                 job.queuedAt(),
                 job.startedAt().orElse(null),
-                job.finishedAt().orElse(null)
+                job.finishedAt().orElse(null),
+                job.lastHeartbeatAt().orElse(null)
         );
     }
 }
