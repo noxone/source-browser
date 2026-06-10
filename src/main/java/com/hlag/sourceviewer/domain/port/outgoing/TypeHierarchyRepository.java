@@ -17,4 +17,6 @@ public interface TypeHierarchyRepository {
     void deleteSupersededByScanJob(Long scanJobId);
 
     void deleteUnpublishedByScanJob(Long scanJobId);
+
+    long countPublished();
 }

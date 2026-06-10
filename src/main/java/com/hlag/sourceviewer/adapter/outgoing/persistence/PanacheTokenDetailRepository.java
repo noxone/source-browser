@@ -95,4 +95,11 @@ public class PanacheTokenDetailRepository implements TokenDetailRepository {
                 .setParameter("jobId", scanJobId)
                 .executeUpdate();
     }
+
+    @Override
+    public long countPublished() {
+        return entityManager
+                .createQuery("SELECT COUNT(d) FROM TokenDetail d WHERE d.published = true", Long.class)
+                .getSingleResult();
+    }
 }

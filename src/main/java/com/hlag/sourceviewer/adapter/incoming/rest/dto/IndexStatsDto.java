@@ -5,7 +5,8 @@ import java.util.List;
 public record IndexStatsDto(
         List<IndexedRepoStatsDto> repositories,
         long totalFiles,
-        long totalDocuments,
         long totalSymbols,
-        long totalReferences
+        long totalReferences,
+        long totalTokenInfos,
+        long totalTypeHierarchies
 ) {}

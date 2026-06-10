@@ -136,6 +136,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 scanJobRepository.pollNextQueued().ifPresent(job -> {
                     job.setStatus(ScanJob.ScanJobStatus.RUNNING);
                     job.setStartedAt(Instant.now());
+                    job.setProgress(0);
                     scanJobRepository.update(job);
                     ref.set(job);
                     logger.info("Scan job {} claimed (repository {})",
@@ -151,6 +152,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                     job.setStatus(ScanJob.ScanJobStatus.DONE);
                     job.setFinishedAt(Instant.now());
                     job.setFilesScanned(new TokenCount(filesScanned));
+                    job.setProgress(100);
                     scanJobRepository.update(job);
                     logger.info("Scan job {} completed ({} files)", identifier.value(), filesScanned);
                 }));
@@ -337,13 +339,14 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 } else {
                     batchCount.set(batchAction.run(batch));
                 }
-                updateHeartbeat(jobIdentifier);
                 numberOfProcessedFiles += batchCount.get();
                 indexInFiles += batch.size();
+                int progressPercent = files.isEmpty() ? 100 : numberOfProcessedFiles * 100 / files.size();
                 logger.info("[{}] {}: {}/{} files done ({}%)",
                         repositoryName, phase,
                         numberOfProcessedFiles, files.size(),
-                        files.isEmpty() ? 100 : numberOfProcessedFiles * 100 / files.size());
+                        progressPercent);
+                updateProgress(jobIdentifier, progressPercent);
             } catch (TransactionTimeoutException e) {
                 if (batch.size() <= 1) {
                     throw e;
@@ -428,8 +431,32 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         var scanJobId = scanJob.identifier().value();
 
         // ── Phase 1: collection (no transaction — parsing can be very slow) ──
+        // Pre-warm the next PREWARM_LOOKAHEAD files before we need them so JDTLS can
+        // analyse them in the background while we process the current file.
+        final int PREWARM_LOOKAHEAD = 5;
+        final java.util.Set<Integer> prewarmedIndices = new java.util.HashSet<>();
+
         List<CollectedFile> collected = new ArrayList<>();
-        for (var filePath : filePaths) {
+        for (int fileIndex = 0; fileIndex < filePaths.size(); fileIndex++) {
+            var filePath = filePaths.get(fileIndex);
+
+            // Fire pre-warm for upcoming files (non-blocking: just sends didOpen to JDTLS)
+            for (int ahead = 1; ahead <= PREWARM_LOOKAHEAD; ahead++) {
+                int j = fileIndex + ahead;
+                if (j >= filePaths.size() || !prewarmedIndices.add(j)) continue;
+                var nextPath = filePaths.get(j);
+                var nextIndexer = indexerContexts.values().stream()
+                        .filter(ctx -> ctx.handles(nextPath))
+                        .findFirst();
+                if (nextIndexer.isEmpty()) continue;
+                try {
+                    var nextContent = gitAccess.readFileContent(repository, nextPath, targetSha);
+                    nextContent.ifPresent(c -> nextIndexer.get().prewarm(nextPath, c));
+                } catch (Exception e) {
+                    logger.trace("Pre-warm failed for '{}': {}", nextPath.value(), e.getMessage());
+                }
+            }
+
             try {
                 var indexerContext = indexerContexts.values().stream()
                         .filter(ctx -> ctx.handles(filePath))
@@ -590,15 +617,16 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         return stale.size();
     }
 
-    private void updateHeartbeat(ScanJobIdentifier identifier) {
+    private void updateProgress(ScanJobIdentifier identifier, int progress) {
         try {
             runInNewTransaction(() ->
                     scanJobRepository.findByIdentifier(identifier).ifPresent(job -> {
                         job.setLastHeartbeatAt(Instant.now());
+                        job.setProgress(progress);
                         scanJobRepository.update(job);
                     }));
         } catch (Exception e) {
-            logger.warn("Failed to update heartbeat for scan job {}", identifier.value(), e);
+            logger.warn("Failed to update heartbeat/progress for scan job {}", identifier.value(), e);
         }
     }
 

@@ -63,6 +63,24 @@ public interface LanguageIndexer {
     ParsedFile indexFile(FileIdentifier fileId, FilePath path, String content, Object context);
 
     /**
+     * Pre-opens a file in the language server so its analysis runs in the background
+     * while the previous file is still being processed.
+     *
+     * <p>Calling this method sends {@code textDocument/didOpen} to the language server
+     * and registers the diagnostic latch, but does NOT wait for diagnostics. The wait
+     * happens inside {@link #indexFile} when the file's turn arrives, at which point the
+     * analysis is likely already complete.</p>
+     *
+     * <p>The default implementation is a no-op. Implementations that use a language server
+     * should override this to reduce per-file analysis wait times.</p>
+     *
+     * @param path    the repository-relative path of the file to pre-open
+     * @param content the raw file content (UTF-8 string from git)
+     * @param context the context produced by {@link #prepare} for this scan
+     */
+    default void prewarm(FilePath path, String content, Object context) {}
+
+    /**
      * Releases any resources held by the context produced by {@link #prepare}.
      *
      * <p>Called once after all {@link #indexFile} invocations for a scan are complete.

@@ -5,6 +5,7 @@ import com.hlag.sourceviewer.domain.model.identifier.ScanJobIdentifier;
 import com.hlag.sourceviewer.domain.model.source.ScanJob;
 import com.hlag.sourceviewer.domain.port.outgoing.ScanJobRepository;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
@@ -36,12 +37,12 @@ public class PanacheScanJobRepository
 
     @Override
     public List<ScanJob> findAllScanJobs() {
-        return listAll();
+        return listAll(Sort.by("id").descending());
     }
 
     @Override
     public List<ScanJob> findByStatus(ScanJob.ScanJobStatus status) {
-        return list("status", status);
+        return list("status", Sort.by("id").descending(), status);
     }
 
     @Override
@@ -72,6 +73,13 @@ public class PanacheScanJobRepository
     @Transactional
     public void deleteAllQueued() {
         delete("status", ScanJob.ScanJobStatus.QUEUED);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAllFinished() {
+        delete("status IN ?1",
+                List.of(ScanJob.ScanJobStatus.DONE, ScanJob.ScanJobStatus.FAILED));
     }
 
     @Override

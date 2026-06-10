@@ -90,7 +90,8 @@ class ScanJobResourceApiTest {
             .body("[0].triggerType", equalTo("MANUAL"))
             .body("[0].commitSha", equalTo("abc1234"))
             .body("[0].status", equalTo("QUEUED"))
-            .body("[0].queuedAt", notNullValue());
+            .body("[0].queuedAt", notNullValue())
+            .body("[0].lastHeartbeatAt", nullValue());
     }
 
     @Test
@@ -165,6 +166,29 @@ class ScanJobResourceApiTest {
             .statusCode(204);
 
         verify(useCase).deleteAllQueuedScanJobs();
+    }
+
+    // ── DELETE /api/admin/scan-jobs/finished ──────────────────────────────────
+
+    @Test
+    void deleteAllFinishedScanJobs_returns_204() {
+        doNothing().when(useCase).deleteFinishedScanJobs();
+
+        given()
+            .when().delete(BASE_PATH + "/finished")
+            .then()
+            .statusCode(204);
+
+        verify(useCase).deleteFinishedScanJobs();
+    }
+
+    @Test
+    @TestSecurity(user = "regularuser", roles = {"user"})
+    void deleteAllFinishedScanJobs_returns_403_for_non_admin() {
+        given()
+            .when().delete(BASE_PATH + "/finished")
+            .then()
+            .statusCode(403);
     }
 
     // ── Access control ────────────────────────────────────────────────────────

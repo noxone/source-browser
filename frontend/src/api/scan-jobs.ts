@@ -19,3 +19,9 @@ export async function deleteAllQueuedScanJobs(): Promise<void> {
   const response = await authenticatedFetch(BASE, { method: 'DELETE' })
   if (!response.ok) throw new Error(`Failed to delete queued scan jobs: ${response.status}`)
 }
+
+export async function deleteAllFinishedScanJobs(): Promise<void> {
+  const response = await authenticatedFetch(`${BASE}/finished`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(`Failed to delete finished scan jobs: ${response.status}`)
+}
+

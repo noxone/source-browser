@@ -30,8 +30,9 @@ public class IndexStatsResource {
                         .map(r -> new IndexedRepoStatsDto(r.id(), r.name(), r.fileCount()))
                         .toList(),
                 stats.totalFiles(),
-                stats.totalDocuments(),
                 stats.totalSymbols(),
-                stats.totalReferences());
+                stats.totalReferences(),
+                stats.totalTokenInfos(),
+                stats.totalTypeHierarchies());
     }
 }

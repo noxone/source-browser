@@ -32,6 +32,9 @@ public interface ScanJobRepository {
 
     void deleteAllQueued();
 
+    /** Deletes all scan jobs in {@code DONE} or {@code FAILED} status. */
+    void deleteAllFinished();
+
     /** Returns RUNNING jobs whose heartbeat is older than {@code staleBefore}, or that never sent one. */
     List<ScanJob> findStaleRunningJobs(Instant staleBefore);
 }

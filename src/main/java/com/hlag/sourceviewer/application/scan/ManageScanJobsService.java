@@ -61,4 +61,11 @@ public class ManageScanJobsService implements ManageScanJobsUseCase {
         scanJobRepository.deleteAllQueued();
         logger.info("All queued scan jobs deleted by administrator");
     }
+
+    @Override
+    @Transactional
+    public void deleteFinishedScanJobs() {
+        scanJobRepository.deleteAllFinished();
+        logger.info("All finished scan jobs deleted by administrator");
+    }
 }

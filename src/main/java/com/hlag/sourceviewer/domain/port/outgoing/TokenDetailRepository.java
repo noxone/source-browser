@@ -21,4 +21,6 @@ public interface TokenDetailRepository {
     void deleteSupersededByScanJob(Long scanJobId);
 
     void deleteUnpublishedByScanJob(Long scanJobId);
+
+    long countPublished();
 }

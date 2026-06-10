@@ -82,4 +82,11 @@ public class PanacheTypeHierarchyRepository implements TypeHierarchyRepository {
                 .setParameter("jobId", scanJobId)
                 .executeUpdate();
     }
+
+    @Override
+    public long countPublished() {
+        return entityManager
+                .createQuery("SELECT COUNT(h) FROM TypeHierarchyEntry h WHERE h.published = true", Long.class)
+                .getSingleResult();
+    }
 }

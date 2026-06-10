@@ -48,7 +48,7 @@ RUN groupadd -r sourceviewer \
 COPY --from=jdtls-downloader /opt/jdtls/ /opt/jdtls/
 COPY --from=builder /build/target/quarkus-app/ /app/
 
-RUN chown -R sourceviewer:sourceviewer /app
+RUN chown -R sourceviewer:sourceviewer /app /opt/jdtls
 
 # JDTLS is installed at /opt/jdtls/.  After the first startup configure the
 # paths via the admin REST API (requires admin role):
