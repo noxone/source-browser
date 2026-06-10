@@ -54,7 +54,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -265,9 +270,6 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
         // Phase 2b: LSP-based reference resolution via textDocument/definition
         Set<String> declarationPositions = symbolsByPosition.keySet();
-        List<PendingReference> references = resolveReferencesViaDefinition(
-                fileUri, parsedFile.tokens(), declarationPositions, session, indexingContext.repoRoot());
-        logger.debug("[JDTLS] {}: {} references resolved via definition", filename, references.size());
 
         // Build import map once — shared by detail extraction and hierarchy extraction
         Map<String, String> importMap = buildImportMap(parsedFile.tokens());
@@ -284,11 +286,25 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             }
         }
 
-        // Phase 2c: Token detail extraction via LSP hover + import map fallback
-        List<com.hlag.sourceviewer.domain.model.source.TokenDetail> tokenDetails =
-                extractTokenDetails(session, textDocId, fileId, parsedFile.tokens(),
-                        declarationPositions, symbolsByPosition, importMap, packagePrefix,
-                        paramsByMethod, filename);
+        // Shared executor for all parallel LSP calls in this file (virtual threads, Java 21).
+        // Closed in the finally block below after both phases complete.
+        ExecutorService lspExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        List<PendingReference> references;
+        List<com.hlag.sourceviewer.domain.model.source.TokenDetail> tokenDetails;
+        try {
+            ReferencesWithLocations resolved = resolveReferencesViaDefinition(
+                    fileUri, parsedFile.tokens(), declarationPositions, session,
+                    indexingContext.repoRoot(), lspExecutor);
+            references = resolved.references();
+            logger.debug("[JDTLS] {}: {} references resolved via definition", filename, references.size());
+
+            // Phase 2c: Token detail extraction via LSP hover + import map fallback
+            tokenDetails = extractTokenDetails(session, textDocId, fileId, parsedFile.tokens(),
+                    declarationPositions, symbolsByPosition, importMap, packagePrefix,
+                    paramsByMethod, filename, resolved.definitionsByTokenPos(), lspExecutor);
+        } finally {
+            lspExecutor.close();
+        }
         // Phase 2c2: import-identifier details (always clickable without hover)
         tokenDetails.addAll(extractImportTokenDetails(parsedFile.tokens(), fileId, importMap));
         logger.debug("[JDTLS] {}: {} token details extracted", filename, tokenDetails.size());
@@ -319,9 +335,12 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             Map<String, String> importMap,
             String packagePrefix,
             Map<String, List<Symbol>> paramsByMethod,
-            String filename) {
+            String filename,
+            Map<String, Location> definitionsByTokenPos,
+            ExecutorService lspExecutor) {
 
         // Detect annotation token positions: IDENTIFIER immediately preceded by '@'
+        // (Sequential pre-pass — must finish before parallel phase reads annotationPositions)
         Set<String> annotationPositions = new java.util.HashSet<>();
         for (int i = 1; i < tokens.size(); i++) {
             ExtractedToken prev = tokens.get(i - 1);
@@ -341,106 +360,160 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
             }
         }
 
-        List<com.hlag.sourceviewer.domain.model.source.TokenDetail> result = new ArrayList<>();
-        for (int tokenIdx = 0; tokenIdx < tokens.size(); tokenIdx++) {
-            ExtractedToken token = tokens.get(tokenIdx);
-            if (!token.is(IDENTIFIER)) {
-                continue;
-            }
-            String posKey = token.line() + ":" + token.columnStart();
+        // Cache hover results by definition location (file:line:col of the target symbol).
+        // Two tokens with the same name but different definitions resolve to different locations
+        // and therefore get separate cache entries — no false deduplication.
+        // Optional.empty() represents a confirmed hover-miss (so we don't re-issue the call).
+        Map<String, Optional<String>> hoverCache = new ConcurrentHashMap<>();
 
-            // For declaration tokens, build detail from symbol info (no LSP call needed)
-            if (declarationPositions.contains(posKey)) {
-                Symbol sym = symbolsByPosition.get(posKey);
-                if (sym != null) {
-                    com.hlag.sourceviewer.domain.model.source.TokenDetail td =
-                            buildDetailFromSymbol(fileId, token, sym, importMap, packagePrefix, paramsByMethod);
-                    if (td != null) {
-                        // For field/parameter declarations where typeFqn is still null, try hover as fallback
-                        td = enrichVariableTypeFromHover(td, session, textDocId, token, importMap, packagePrefix);
-                        result.add(td);
-                    }
-                }
-                continue;
-            }
+        // Fire all per-token detail extractions in parallel.
+        // resolveQualifiedMemberAccess() and the tokens list are read-only → thread-safe.
+        List<CompletableFuture<com.hlag.sourceviewer.domain.model.source.TokenDetail>> futures =
+                IntStream.range(0, tokens.size())
+                        .mapToObj(tokenIdx -> CompletableFuture.supplyAsync(
+                                () -> extractSingleTokenDetail(
+                                        tokenIdx, tokens, fileId, session, textDocId,
+                                        declarationPositions, annotationPositions, symbolsByPosition,
+                                        importMap, packagePrefix, paramsByMethod,
+                                        definitionsByTokenPos, hoverCache),
+                                lspExecutor))
+                        .toList();
 
-            // Fix 1: member-access FQN — handles e.g. ImportOption.DoNotIncludeTests where only
-            // ImportOption is imported. Build the full FQN from the import map without calling hover.
-            String memberFqn = resolveQualifiedMemberAccess(tokens, tokenIdx, importMap);
-            if (memberFqn != null) {
-                result.add(buildTokenDetail(fileId, token,
-                        com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
-                        new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(memberFqn, "CLASS")));
-                continue;
-            }
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
 
-            // For reference tokens, call hover and parse the result
-            String javaCode = fetchJavaHoverCode(session, textDocId, token);
+    private com.hlag.sourceviewer.domain.model.source.TokenDetail extractSingleTokenDetail(
+            int tokenIdx,
+            List<ExtractedToken> tokens,
+            FileIdentifier fileId,
+            LanguageServerSession<?> session,
+            TextDocumentIdentifier textDocId,
+            Set<String> declarationPositions,
+            Set<String> annotationPositions,
+            Map<String, Symbol> symbolsByPosition,
+            Map<String, String> importMap,
+            String packagePrefix,
+            Map<String, List<Symbol>> paramsByMethod,
+            Map<String, Location> definitionsByTokenPos,
+            Map<String, Optional<String>> hoverCache) {
 
-            // Override: if preceded by @, treat as annotation regardless of hover
-            if (annotationPositions.contains(posKey)) {
-                String fqn = null;
-                if (javaCode != null) {
-                    HoverTextParser.ParsedDetail parsed = HoverTextParser.parse(javaCode);
-                    if (parsed != null && parsed.type() == com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.ANNOTATION) {
-                        // Hover already gave us an AnnotationDetail — resolve FQN if still simple
-                        com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail ad =
-                                (com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail) parsed.detail();
-                        fqn = ad.qualifiedName();
-                    } else {
-                        fqn = deriveAnnotationFqn(javaCode, token.text());
-                    }
-                }
-                if (fqn == null) fqn = token.text();
-                // Resolve simple name via import map
-                if (!fqn.contains(".")) fqn = importMap.getOrDefault(fqn, fqn);
-                result.add(buildTokenDetail(fileId, token,
-                        com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.ANNOTATION,
-                        new com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail(fqn)));
-                continue;
-            }
-
-            if (javaCode == null) {
-                // Hover returned nothing — fall back to import map / java.lang / same-package for type refs
-                String fqn = resolveTypeRef(token.text(), importMap, packagePrefix);
-                if (fqn != null) {
-                    result.add(buildTokenDetail(fileId, token,
-                            com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
-                            new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS")));
-                }
-                continue;
-            }
-
-            HoverTextParser.ParsedDetail parsed = HoverTextParser.parse(javaCode);
-            if (parsed != null) {
-                // Fix 3: method-name mismatch guard — JDTLS sometimes returns the callee's signature
-                // for a local variable (e.g. hover on `fileUri` returns `resolveFileUri(...)`).
-                // Detect by checking the parsed method name against the token text.
-                if ((parsed.type() == com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.METHOD_CALL
-                        || parsed.type() == com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.METHOD_DECL)
-                        && parsed.detail() instanceof com.hlag.sourceviewer.domain.model.source.detail.MethodDetail md
-                        && !md.name().equals(token.text())) {
-                    String fqn = resolveTypeRef(token.text(), importMap, packagePrefix);
-                    if (fqn != null) {
-                        result.add(buildTokenDetail(fileId, token,
-                                com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
-                                new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS")));
-                    }
-                    continue;
-                }
-                Object detail = resolveDetailFqns(parsed.detail(), importMap, packagePrefix);
-                result.add(buildTokenDetail(fileId, token, parsed.type(), detail));
-            } else {
-                // Hover code present but unparseable — fall back to import map / same-package
-                String fqn = resolveTypeRef(token.text(), importMap, packagePrefix);
-                if (fqn != null) {
-                    result.add(buildTokenDetail(fileId, token,
-                            com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
-                            new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS")));
-                }
-            }
+        ExtractedToken token = tokens.get(tokenIdx);
+        if (!token.is(IDENTIFIER)) {
+            return null;
         }
-        return result;
+        String posKey = token.line() + ":" + token.columnStart();
+
+        // For declaration tokens, build detail from symbol info (no LSP call needed)
+        if (declarationPositions.contains(posKey)) {
+            Symbol sym = symbolsByPosition.get(posKey);
+            if (sym == null) return null;
+            com.hlag.sourceviewer.domain.model.source.TokenDetail td =
+                    buildDetailFromSymbol(fileId, token, sym, importMap, packagePrefix, paramsByMethod);
+            if (td == null) return null;
+            // For field/parameter declarations where typeFqn is still null, try hover as fallback
+            return enrichVariableTypeFromHover(td, session, textDocId, token, importMap, packagePrefix);
+        }
+
+        // Fix 1: member-access FQN — handles e.g. ImportOption.DoNotIncludeTests where only
+        // ImportOption is imported. Build the full FQN from the import map without calling hover.
+        // read-only access to tokens list and importMap → thread-safe.
+        String memberFqn = resolveQualifiedMemberAccess(tokens, tokenIdx, importMap);
+        if (memberFqn != null) {
+            return buildTokenDetail(fileId, token,
+                    com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                    new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(memberFqn, "CLASS"));
+        }
+
+        // For reference tokens, fetch hover — deduplicated by definition location.
+        // Tokens that resolve to the same definition share one hover call (same symbol → same result).
+        // Tokens without a known definition location always call hover directly.
+        String javaCode = fetchHoverWithCache(session, textDocId, token, posKey,
+                definitionsByTokenPos, hoverCache);
+
+        // Override: if preceded by @, treat as annotation regardless of hover
+        if (annotationPositions.contains(posKey)) {
+            String fqn = null;
+            if (javaCode != null) {
+                HoverTextParser.ParsedDetail parsed = HoverTextParser.parse(javaCode);
+                if (parsed != null && parsed.type() == com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.ANNOTATION) {
+                    // Hover already gave us an AnnotationDetail — resolve FQN if still simple
+                    com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail ad =
+                            (com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail) parsed.detail();
+                    fqn = ad.qualifiedName();
+                } else {
+                    fqn = deriveAnnotationFqn(javaCode, token.text());
+                }
+            }
+            if (fqn == null) fqn = token.text();
+            // Resolve simple name via import map
+            if (!fqn.contains(".")) fqn = importMap.getOrDefault(fqn, fqn);
+            return buildTokenDetail(fileId, token,
+                    com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.ANNOTATION,
+                    new com.hlag.sourceviewer.domain.model.source.detail.AnnotationDetail(fqn));
+        }
+
+        if (javaCode == null) {
+            // Hover returned nothing — fall back to import map / java.lang / same-package for type refs
+            String fqn = resolveTypeRef(token.text(), importMap, packagePrefix);
+            if (fqn == null) return null;
+            return buildTokenDetail(fileId, token,
+                    com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                    new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS"));
+        }
+
+        HoverTextParser.ParsedDetail parsed = HoverTextParser.parse(javaCode);
+        if (parsed != null) {
+            // Fix 3: method-name mismatch guard — JDTLS sometimes returns the callee's signature
+            // for a local variable (e.g. hover on `fileUri` returns `resolveFileUri(...)`).
+            // Detect by checking the parsed method name against the token text.
+            if ((parsed.type() == com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.METHOD_CALL
+                    || parsed.type() == com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.METHOD_DECL)
+                    && parsed.detail() instanceof com.hlag.sourceviewer.domain.model.source.detail.MethodDetail md
+                    && !md.name().equals(token.text())) {
+                String fqn = resolveTypeRef(token.text(), importMap, packagePrefix);
+                if (fqn == null) return null;
+                return buildTokenDetail(fileId, token,
+                        com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                        new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS"));
+            }
+            Object detail = resolveDetailFqns(parsed.detail(), importMap, packagePrefix);
+            return buildTokenDetail(fileId, token, parsed.type(), detail);
+        } else {
+            // Hover code present but unparseable — fall back to import map / same-package
+            String fqn = resolveTypeRef(token.text(), importMap, packagePrefix);
+            if (fqn == null) return null;
+            return buildTokenDetail(fileId, token,
+                    com.hlag.sourceviewer.domain.model.source.detail.TokenDetailType.TYPE_REF,
+                    new com.hlag.sourceviewer.domain.model.source.detail.TypeRefDetail(fqn, "CLASS"));
+        }
+    }
+
+    /**
+     * Fetches hover text, using a per-definition-location cache to avoid redundant LSP calls.
+     * Two tokens with the same name but different scopes resolve to different definition locations
+     * and therefore receive independent hover calls — no false deduplication.
+     * {@code Optional.empty()} in the cache represents a confirmed no-result hover response.
+     */
+    private String fetchHoverWithCache(
+            LanguageServerSession<?> session,
+            TextDocumentIdentifier textDocId,
+            ExtractedToken token,
+            String tokenPosKey,
+            Map<String, Location> definitionsByTokenPos,
+            Map<String, Optional<String>> hoverCache) {
+        Location defLoc = definitionsByTokenPos.get(tokenPosKey);
+        if (defLoc == null) {
+            return fetchJavaHoverCode(session, textDocId, token);
+        }
+        String cacheKey = defLoc.getUri()
+                + ":" + defLoc.getRange().getStart().getLine()
+                + ":" + defLoc.getRange().getStart().getCharacter();
+        return hoverCache.computeIfAbsent(cacheKey,
+                k -> Optional.ofNullable(fetchJavaHoverCode(session, textDocId, token)))
+                .orElse(null);
     }
 
     /**
@@ -1135,51 +1208,75 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         return new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
     }
 
-    private List<PendingReference> resolveReferencesViaDefinition(
+    private ReferencesWithLocations resolveReferencesViaDefinition(
             String fileUri,
             List<ExtractedToken> tokens,
             Set<String> declarationPositions,
             LanguageServerSession<?> session,
-            Path repoRoot) {
+            Path repoRoot,
+            ExecutorService lspExecutor) {
+
+        // Collect non-declaration identifier tokens as candidates
+        List<ExtractedToken> candidates = tokens.stream()
+                .filter(t -> t.kind() == IDENTIFIER
+                          && !declarationPositions.contains(t.line() + ":" + t.columnStart()))
+                .toList();
+
+        // Fire all definition requests in parallel
+        record TokenDefinitionFuture(ExtractedToken token, CompletableFuture<Object> future) {}
+        List<TokenDefinitionFuture> futures = candidates.stream()
+                .map(token -> {
+                    Position position = new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
+                    DefinitionParams params = new DefinitionParams(new TextDocumentIdentifier(fileUri), position);
+                    CompletableFuture<Object> future = CompletableFuture.supplyAsync(() -> {
+                        try {
+                            // definition() returns Either<List<Location>, List<LocationLink>>
+                            return session.textDocumentService()
+                                    .definition(params)
+                                    .get(DEFINITION_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                        } catch (Exception e) {
+                            logger.trace("[JDTLS] definition failed for token '{}' at {}:{}: {}",
+                                    token.text(), token.line(), token.columnStart(), e.getMessage());
+                            return null;
+                        }
+                    }, lspExecutor);
+                    return new TokenDefinitionFuture(token, future);
+                })
+                .toList();
+
+        // Collect results — join() blocks until all futures are done
         List<PendingReference> references = new ArrayList<>();
-        for (ExtractedToken token : tokens) {
-            if (token.kind() != IDENTIFIER) {
+        Map<String, Location> definitionsByTokenPos = new HashMap<>();
+
+        for (TokenDefinitionFuture tdf : futures) {
+            Object result;
+            try {
+                result = tdf.future().join();
+            } catch (Exception e) {
                 continue;
             }
-            String posKey = token.line() + ":" + token.columnStart();
-            if (declarationPositions.contains(posKey)) {
-                continue; // this is a declaration, not a reference
-            }
-            Position position = new Position(token.line() - 1, Math.max(0, token.columnStart() - 1));
-            DefinitionParams params = new DefinitionParams(new TextDocumentIdentifier(fileUri), position);
-            try {
-                // definition() returns Either<List<Location>, List<LocationLink>>
-                var result = session.textDocumentService()
-                        .definition(params)
-                        .get(DEFINITION_REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-                if (result == null) continue;
-                Location loc = extractFirstLocation(result);
-                if (loc == null) continue;
-                // Only create a reference if the definition is within the repository
-                Optional<FilePath> defPath = uriToRepoRelativePath(loc.getUri(), repoRoot);
-                if (defPath.isEmpty()) continue;
-                int defLine = loc.getRange().getStart().getLine() + 1;
-                int defCol  = loc.getRange().getStart().getCharacter() + 1;
-                references.add(new PendingReference(
-                        Optional.empty(),
-                        Optional.of(new SimpleName(token.text())),
-                        ReferenceKind.TYPE_USE,
-                        Optional.of(new LineNumber(token.line())),
-                        Optional.of(new ColumnNumber(token.columnStart())),
-                        defPath,
-                        Optional.of(new LineNumber(defLine)),
-                        Optional.of(new ColumnNumber(defCol))));
-            } catch (Exception e) {
-                logger.trace("[JDTLS] definition failed for token '{}' at {}:{}: {}",
-                        token.text(), token.line(), token.columnStart(), e.getMessage());
-            }
+            if (result == null) continue;
+            Location loc = extractFirstLocation(result);
+            if (loc == null) continue;
+            // Only create a reference if the definition is within the repository
+            Optional<FilePath> defPath = uriToRepoRelativePath(loc.getUri(), repoRoot);
+            if (defPath.isEmpty()) continue;
+            ExtractedToken token = tdf.token();
+            int defLine = loc.getRange().getStart().getLine() + 1;
+            int defCol  = loc.getRange().getStart().getCharacter() + 1;
+            references.add(new PendingReference(
+                    Optional.empty(),
+                    Optional.of(new SimpleName(token.text())),
+                    ReferenceKind.TYPE_USE,
+                    Optional.of(new LineNumber(token.line())),
+                    Optional.of(new ColumnNumber(token.columnStart())),
+                    defPath,
+                    Optional.of(new LineNumber(defLine)),
+                    Optional.of(new ColumnNumber(defCol))));
+            definitionsByTokenPos.put(token.line() + ":" + token.columnStart(), loc);
         }
-        return references;
+
+        return new ReferencesWithLocations(references, definitionsByTokenPos);
     }
 
     private static Location extractFirstLocation(Object result) {
@@ -1807,6 +1904,10 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
     private static Token lookAhead(List<Token> tokens, int index) {
         return index < tokens.size() ? tokens.get(index) : null;
     }
+
+    private record ReferencesWithLocations(
+            List<PendingReference> references,
+            Map<String, Location> definitionsByTokenPos) {}
 
     private static final class TypeContext {
         private final String name;
