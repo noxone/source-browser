@@ -27,7 +27,8 @@
       "Read(//tmp/**)",
       "Bash(grep -E \"\\\\.\\(java|ts|tsx|js\\)$\")",
       "Bash(mvn verify *)",
-      "Bash(grep -E \"\\\\.\\(ts|tsx|vue\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|tsx|vue\\)$\")",
+      "Bash(grep -E \"\\\\.\\(java|kt\\)$\")"
     ]
   }
 }
