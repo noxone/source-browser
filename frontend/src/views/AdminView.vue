@@ -1579,10 +1579,24 @@ async function setAdminStatus(userAccount: UserAccount, admin: boolean) {
   }
 }
 
+// Detect whether the user's browser/OS locale prefers 12-hour time.
+// resolvedOptions() reflects OS-level time format overrides (e.g. "24-hour time"
+// checked in macOS System Settings or Windows Region settings). We default to
+// 24h (hour12: false) and only switch to 12h when the locale explicitly resolves
+// to a 12-hour cycle.
+const _localeHour12 = (() => {
+  try {
+    return new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions().hour12 === true
+  } catch {
+    return false
+  }
+})()
+
 function formatDate(isoString: string): string {
   return new Date(isoString).toLocaleString(undefined, {
     dateStyle: 'medium',
-    timeStyle: 'short'
+    timeStyle: 'short',
+    hour12: _localeHour12,
   })
 }
 
