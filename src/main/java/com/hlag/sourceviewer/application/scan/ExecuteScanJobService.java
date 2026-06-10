@@ -431,8 +431,32 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         var scanJobId = scanJob.identifier().value();
 
         // ── Phase 1: collection (no transaction — parsing can be very slow) ──
+        // Pre-warm the next PREWARM_LOOKAHEAD files before we need them so JDTLS can
+        // analyse them in the background while we process the current file.
+        final int PREWARM_LOOKAHEAD = 5;
+        final java.util.Set<Integer> prewarmedIndices = new java.util.HashSet<>();
+
         List<CollectedFile> collected = new ArrayList<>();
-        for (var filePath : filePaths) {
+        for (int fileIndex = 0; fileIndex < filePaths.size(); fileIndex++) {
+            var filePath = filePaths.get(fileIndex);
+
+            // Fire pre-warm for upcoming files (non-blocking: just sends didOpen to JDTLS)
+            for (int ahead = 1; ahead <= PREWARM_LOOKAHEAD; ahead++) {
+                int j = fileIndex + ahead;
+                if (j >= filePaths.size() || !prewarmedIndices.add(j)) continue;
+                var nextPath = filePaths.get(j);
+                var nextIndexer = indexerContexts.values().stream()
+                        .filter(ctx -> ctx.handles(nextPath))
+                        .findFirst();
+                if (nextIndexer.isEmpty()) continue;
+                try {
+                    var nextContent = gitAccess.readFileContent(repository, nextPath, targetSha);
+                    nextContent.ifPresent(c -> nextIndexer.get().prewarm(nextPath, c));
+                } catch (Exception e) {
+                    logger.trace("Pre-warm failed for '{}': {}", nextPath.value(), e.getMessage());
+                }
+            }
+
             try {
                 var indexerContext = indexerContexts.values().stream()
                         .filter(ctx -> ctx.handles(filePath))

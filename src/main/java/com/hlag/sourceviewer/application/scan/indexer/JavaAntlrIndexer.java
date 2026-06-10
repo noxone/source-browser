@@ -68,6 +68,9 @@ import org.antlr.v4.runtime.CharStream;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.Token;
 import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.DidCloseTextDocumentParams;
+import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.TextDocumentItem;
 import org.eclipse.lsp4j.DocumentSymbol;
 import org.eclipse.lsp4j.DocumentSymbolParams;
 import org.eclipse.lsp4j.Hover;
@@ -239,8 +242,40 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
 
         final var session = ctx.session().get();
         final var fileUri = resolveFileUri(session.projectRoot(), path);
+
+        if (ctx.claimPrewarmed(fileUri)) {
+            // File was pre-opened by prewarm() — skip didOpen/waitForDiagnostics,
+            // just await the diagnostics that are already in flight.
+            try {
+                session.languageClient().awaitDiagnostics(fileUri, 300, TimeUnit.SECONDS);
+                return extractInformationFromDocument(session, ctx, groupedParsedFile, fileId, path, fileUri, content);
+            } finally {
+                session.textDocumentService().didClose(
+                        new DidCloseTextDocumentParams(new TextDocumentIdentifier(fileUri)));
+            }
+        }
+
         return withDocument(session, fileUri, "java", content, 300, () ->
                 extractInformationFromDocument(session, ctx, groupedParsedFile, fileId, path, fileUri, content));
+    }
+
+    /**
+     * Pre-opens the file in JDTLS so its analysis runs in the background while the
+     * previous file is still being processed. Sends {@code didOpen} and registers the
+     * diagnostic latch but does NOT wait — the wait happens in {@link #indexFile}.
+     */
+    @Override
+    public void prewarm(FilePath path, String content, Object context) {
+        if (!(context instanceof JavaAntlrIndexingContext ctx) || ctx.session().isEmpty()) {
+            return;
+        }
+        var session = ctx.session().get();
+        String fileUri = resolveFileUri(session.projectRoot(), path);
+        session.languageClient().waitForDiagnostics(fileUri);
+        session.textDocumentService().didOpen(
+                new DidOpenTextDocumentParams(
+                        new TextDocumentItem(fileUri, "java", 1, content)));
+        ctx.registerPrewarmed(fileUri);
     }
 
     private ParsedFile extractInformationFromDocument(
@@ -1039,11 +1074,11 @@ public class JavaAntlrIndexer extends AbstractAntlr4Indexer {
         return -1;
     }
 
-    /** Closes the JDTLS session held by the context (if any). */
+    /** Closes any remaining pre-warmed files and the JDTLS session held by the context. */
     @Override
     public void teardown(Object context) {
         if (context instanceof JavaAntlrIndexingContext ctx) {
-            ctx.close();
+            ctx.close(); // closes pre-warmed files first, then the session
             logger.debug("JDTLS session closed after indexing");
         }
     }
