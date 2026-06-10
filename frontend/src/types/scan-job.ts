@@ -8,4 +8,5 @@ export interface ScanJob {
   startedAt: string | null
   finishedAt: string | null
   lastHeartbeatAt: string | null
+  progress: number
 }

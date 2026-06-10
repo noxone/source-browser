@@ -16,6 +16,7 @@ import java.time.Instant;
  * @param startedAt         when processing began, or {@code null} if not yet started
  * @param finishedAt        when processing completed, or {@code null} if not yet finished
  * @param lastHeartbeatAt   the last heartbeat timestamp, or {@code null} if no heartbeat received yet
+ * @param progress          indexing progress as a percentage (0–100)
  */
 public record ScanJobDto(
         Long id,
@@ -26,7 +27,8 @@ public record ScanJobDto(
         Instant queuedAt,
         Instant startedAt,
         Instant finishedAt,
-        Instant lastHeartbeatAt
+        Instant lastHeartbeatAt,
+        int progress
 ) {
     public static ScanJobDto from(ScanJob job) {
         return new ScanJobDto(
@@ -38,7 +40,8 @@ public record ScanJobDto(
                 job.queuedAt(),
                 job.startedAt().orElse(null),
                 job.finishedAt().orElse(null),
-                job.lastHeartbeatAt().orElse(null)
+                job.lastHeartbeatAt().orElse(null),
+                job.progress()
         );
     }
 }

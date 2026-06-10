@@ -847,12 +847,23 @@
                   {{ job.commitSha ? job.commitSha.substring(0, 8) : '—' }}
                 </td>
                 <td class="px-6 py-4">
-                  <span
-                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border"
-                    :class="STATUS_CLASSES[job.status] ?? 'bg-gray-50 text-gray-500 border-gray-200'"
-                  >
-                    {{ job.status }}
-                  </span>
+                  <div class="flex flex-col gap-1">
+                    <span
+                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border self-start"
+                      :class="STATUS_CLASSES[job.status] ?? 'bg-gray-50 text-gray-500 border-gray-200'"
+                    >
+                      {{ job.status }}
+                    </span>
+                    <div v-if="job.status === 'RUNNING'" class="flex items-center gap-2">
+                      <div class="w-24 bg-gray-200 rounded-full h-1.5">
+                        <div
+                          class="bg-blue-500 h-1.5 rounded-full transition-all duration-500"
+                          :style="{ width: job.progress + '%' }"
+                        />
+                      </div>
+                      <span class="text-xs text-gray-400">{{ job.progress }}%</span>
+                    </div>
+                  </div>
                 </td>
                 <td class="px-6 py-4 text-sm text-gray-500">{{ formatDate(job.queuedAt) }}</td>
                 <td class="px-6 py-4 text-sm text-gray-500">{{ job.startedAt ? formatDate(job.startedAt) : '—' }}</td>

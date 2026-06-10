@@ -136,6 +136,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 scanJobRepository.pollNextQueued().ifPresent(job -> {
                     job.setStatus(ScanJob.ScanJobStatus.RUNNING);
                     job.setStartedAt(Instant.now());
+                    job.setProgress(0);
                     scanJobRepository.update(job);
                     ref.set(job);
                     logger.info("Scan job {} claimed (repository {})",
@@ -151,6 +152,7 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                     job.setStatus(ScanJob.ScanJobStatus.DONE);
                     job.setFinishedAt(Instant.now());
                     job.setFilesScanned(new TokenCount(filesScanned));
+                    job.setProgress(100);
                     scanJobRepository.update(job);
                     logger.info("Scan job {} completed ({} files)", identifier.value(), filesScanned);
                 }));
@@ -337,13 +339,14 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
                 } else {
                     batchCount.set(batchAction.run(batch));
                 }
-                updateHeartbeat(jobIdentifier);
                 numberOfProcessedFiles += batchCount.get();
                 indexInFiles += batch.size();
+                int progressPercent = files.isEmpty() ? 100 : numberOfProcessedFiles * 100 / files.size();
                 logger.info("[{}] {}: {}/{} files done ({}%)",
                         repositoryName, phase,
                         numberOfProcessedFiles, files.size(),
-                        files.isEmpty() ? 100 : numberOfProcessedFiles * 100 / files.size());
+                        progressPercent);
+                updateProgress(jobIdentifier, progressPercent);
             } catch (TransactionTimeoutException e) {
                 if (batch.size() <= 1) {
                     throw e;
@@ -590,15 +593,16 @@ public class ExecuteScanJobService implements ExecuteScanJobUseCase {
         return stale.size();
     }
 
-    private void updateHeartbeat(ScanJobIdentifier identifier) {
+    private void updateProgress(ScanJobIdentifier identifier, int progress) {
         try {
             runInNewTransaction(() ->
                     scanJobRepository.findByIdentifier(identifier).ifPresent(job -> {
                         job.setLastHeartbeatAt(Instant.now());
+                        job.setProgress(progress);
                         scanJobRepository.update(job);
                     }));
         } catch (Exception e) {
-            logger.warn("Failed to update heartbeat for scan job {}", identifier.value(), e);
+            logger.warn("Failed to update heartbeat/progress for scan job {}", identifier.value(), e);
         }
     }
 
