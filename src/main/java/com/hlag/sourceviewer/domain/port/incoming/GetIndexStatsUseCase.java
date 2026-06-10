@@ -9,9 +9,10 @@ public interface GetIndexStatsUseCase {
     record IndexStats(
             List<RepoStats> repositories,
             long totalFiles,
-            long totalDocuments,
             long totalSymbols,
-            long totalReferences
+            long totalReferences,
+            long totalTokenInfos,
+            long totalTypeHierarchies
     ) {}
 
     IndexStats getStats();

@@ -1,11 +1,12 @@
 package com.hlag.sourceviewer.application.search;
 
 import com.hlag.sourceviewer.domain.port.incoming.GetIndexStatsUseCase;
-import com.hlag.sourceviewer.domain.port.outgoing.DocumentRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.RepositoryStore;
 import com.hlag.sourceviewer.domain.port.outgoing.SourceFileRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolReferenceRepository;
 import com.hlag.sourceviewer.domain.port.outgoing.SymbolRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TokenDetailRepository;
+import com.hlag.sourceviewer.domain.port.outgoing.TypeHierarchyRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -18,22 +19,25 @@ public class GetIndexStatsService implements GetIndexStatsUseCase {
 
     private final RepositoryStore repositoryStore;
     private final SourceFileRepository sourceFileRepository;
-    private final DocumentRepository documentRepository;
     private final SymbolRepository symbolRepository;
     private final SymbolReferenceRepository symbolReferenceRepository;
+    private final TokenDetailRepository tokenDetailRepository;
+    private final TypeHierarchyRepository typeHierarchyRepository;
 
     @Inject
     public GetIndexStatsService(
             RepositoryStore repositoryStore,
             SourceFileRepository sourceFileRepository,
-            DocumentRepository documentRepository,
             SymbolRepository symbolRepository,
-            SymbolReferenceRepository symbolReferenceRepository) {
+            SymbolReferenceRepository symbolReferenceRepository,
+            TokenDetailRepository tokenDetailRepository,
+            TypeHierarchyRepository typeHierarchyRepository) {
         this.repositoryStore = repositoryStore;
         this.sourceFileRepository = sourceFileRepository;
-        this.documentRepository = documentRepository;
         this.symbolRepository = symbolRepository;
         this.symbolReferenceRepository = symbolReferenceRepository;
+        this.tokenDetailRepository = tokenDetailRepository;
+        this.typeHierarchyRepository = typeHierarchyRepository;
     }
 
     @Override
@@ -52,8 +56,9 @@ public class GetIndexStatsService implements GetIndexStatsUseCase {
         return new IndexStats(
                 repoStats,
                 sourceFileRepository.countAll(),
-                documentRepository.countPublished(),
                 symbolRepository.countPublished(),
-                symbolReferenceRepository.countPublished());
+                symbolReferenceRepository.countPublished(),
+                tokenDetailRepository.countPublished(),
+                typeHierarchyRepository.countPublished());
     }
 }

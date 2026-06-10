@@ -7,7 +7,8 @@ export interface IndexedRepoStats {
 export interface IndexStats {
   repositories: IndexedRepoStats[]
   totalFiles: number
-  totalDocuments: number
   totalSymbols: number
   totalReferences: number
+  totalTokenInfos: number
+  totalTypeHierarchies: number
 }

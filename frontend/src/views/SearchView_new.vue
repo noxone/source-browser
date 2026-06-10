@@ -198,10 +198,12 @@
       class="-mx-8 px-8 py-2 bg-white border-t border-gray-200 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500 shrink-0"
     >
       <span class="font-medium text-gray-600">Index:</span>
+      <span><span class="font-medium text-gray-700">{{ indexStats.repositories.length.toLocaleString() }}</span> repos</span>
       <span><span class="font-medium text-gray-700">{{ indexStats.totalFiles.toLocaleString() }}</span> files</span>
-      <span><span class="font-medium text-gray-700">{{ indexStats.totalDocuments.toLocaleString() }}</span> documents</span>
       <span><span class="font-medium text-gray-700">{{ indexStats.totalSymbols.toLocaleString() }}</span> symbols</span>
       <span><span class="font-medium text-gray-700">{{ indexStats.totalReferences.toLocaleString() }}</span> references</span>
+      <span><span class="font-medium text-gray-700">{{ indexStats.totalTokenInfos.toLocaleString() }}</span> token infos</span>
+      <span><span class="font-medium text-gray-700">{{ indexStats.totalTypeHierarchies.toLocaleString() }}</span> type hierarchies</span>
     </div>
   </div>
 </template>
