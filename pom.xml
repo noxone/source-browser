@@ -23,7 +23,7 @@
         <!-- Quarkus -->
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
-        <quarkus.platform.version>3.35.3</quarkus.platform.version>
+        <quarkus.platform.version>3.36.2</quarkus.platform.version>
 
         <!-- Libraries -->
         <jgit.version>7.6.0.202603022253-r</jgit.version>
