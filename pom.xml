@@ -26,7 +26,7 @@
         <quarkus.platform.version>3.35.3</quarkus.platform.version>
 
         <!-- Libraries -->
-        <jgit.version>7.6.0.202603022253-r</jgit.version>
+        <jgit.version>7.7.0.202606012155-r</jgit.version>
         <archunit.version>1.4.2</archunit.version>
         <mapstruct.version>1.6.3</mapstruct.version>
         <antlr4.version>4.13.2</antlr4.version>
